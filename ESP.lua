@@ -3,14 +3,13 @@ local Services = {
     Players = game:GetService("Players"),
     RunService = game:GetService("RunService"),
     Workspace = game:GetService("Workspace"),
-    UserInputService = game:GetService("UserInputService"),
-    CoreGui = game:GetService("CoreGui"),
-    ReplicatedStorage = game:GetService("ReplicatedStorage")
+    CoreGui = game:GetService("CoreGui")
 }
 
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = Services.Workspace.CurrentCamera
 local RunService = Services.RunService
+
 local MapFolder = Services.Workspace:WaitForChild("Map"):WaitForChild("Ingame")
 
 local DummyNames = {
@@ -26,12 +25,10 @@ local AdvancedNames = {
     "Swords","shockwave","Voidstar","Shadow"
 }
 
-local PlayerESPData = {}
-local ObjectESPData = {}
-local TracerData = {}
-local Highlights = {}
-local Nametags = {}
-
+local ESPObjects = {}
+local ActiveTracers = {}
+local AdvancedHighlights = {}
+local AdvancedNametags = {}
 local noliByUsername = {}
 
 local ESPSettings = {
@@ -92,16 +89,16 @@ local ESPSettings = {
 }
 
 local AdvancedSettings = {
-    Enabled = false, 
-    OutlineOnly = true, 
-    ShowNametag = false, 
+    Enabled = false,
+    OutlineOnly = true,
+    ShowNametag = false,
     Color = Color3.fromRGB(0, 255, 255)
 }
 
 local function IsRagdoll(model)
     local ragdolls = Services.Workspace:FindFirstChild("Ragdolls")
     if not ragdolls then return false end
-    return model:IsDescendantOf(ragdolls) or (model.Parent == ragdolls)
+    return model:IsDescendantOf(ragdolls)
 end
 
 local function IsSpectating(player)
@@ -121,47 +118,75 @@ local function GetGeneratorPart(model)
         if generator then
             local cube = generator:FindFirstChild("Cube.003")
             if cube and cube:IsA("BasePart") then return cube end
-            for _, v in ipairs(generator:GetDescendants()) do
+            for _, v in generator:GetChildren() do
                 if v:IsA("BasePart") then return v end
             end
         end
-        for _, v in ipairs(instances:GetDescendants()) do
-            if v:IsA("BasePart") and tostring(v.Name):lower():find("cube") then
+        for _, v in instances:GetDescendants() do
+            if v:IsA("BasePart") and v.Name:lower():find("cube") then
                 return v
             end
         end
     end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") and v.Name:lower():find("cube") then
-            return v
+    for _, v in model:GetDescendants() do
+        if v:IsA("BasePart") then return v end
+    end
+    return nil
+end
+
+local function SafeDestroy(obj)
+    pcall(function()
+        if typeof(obj) == "Instance" then
+            obj:Destroy()
+        elseif typeof(obj) == "RBXScriptConnection" then
+            obj:Disconnect()
         end
-    end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") then return v end
-    end
-    return nil
+    end)
 end
 
-local function GetModelRootPart(model)
-    if not model then return nil end
-    if model:IsA("BasePart") then return model end
-    local hrp = model:FindFirstChild("HumanoidRootPart")
-    if hrp then return hrp end
-    local primary = model.PrimaryPart
-    if primary then return primary end
-    for _, v in ipairs(model:GetChildren()) do
-        if v:IsA("BasePart") then return v end
-    end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") then return v end
-    end
-    return nil
+local function CreateHighlight(model, fillColor, outlineColor, fillTrans, outlineTrans)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "TAOWARE_Highlight"
+    highlight.Adornee = model
+    highlight.FillColor = fillColor
+    highlight.OutlineColor = outlineColor
+    highlight.FillTransparency = fillTrans
+    highlight.OutlineTransparency = outlineTrans
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = model
+    return highlight
 end
 
-local function UpdatePlayerBillboardText(data)
-    if not data or not data.model or not data.nameLabel then return end
-    local model = data.model
-    local isKiller = data.isKiller
+local function CreateBillboard(targetPart, parent, color)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "TAOWARE_Billboard"
+    billboard.Adornee = targetPart
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = parent
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.TextColor3 = color
+    textLabel.TextStrokeTransparency = 0
+    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextSize = 8
+    textLabel.Parent = billboard
+    
+    return billboard, textLabel
+end
+
+local function UpdatePlayerESP(espData)
+    local model = espData.Model
+    if not model or not model.Parent then
+        EspLib.RemoveESP(model)
+        return
+    end
+    
+    local isKiller = espData.IsKiller
     local actorText = model:GetAttribute("ActorDisplayName") or (isKiller and "杀手" or "幸存者")
     local skinText = model:GetAttribute("SkinNameDisplay")
     
@@ -169,265 +194,161 @@ local function UpdatePlayerBillboardText(data)
         actorText = actorText .. " (假)"
     end
     
-    local displayText = actorText
     local showSkin = (isKiller and ESPSettings.killerSkinESP) or (not isKiller and ESPSettings.survivorSkinESP)
-    if showSkin and skinText and tostring(skinText) ~= "" then
+    local displayText = actorText
+    if showSkin and skinText and skinText ~= "" then
         displayText = displayText .. " | " .. skinText
     end
     
     local showName = (isKiller and ESPSettings.killerNameESP) or (not isKiller and ESPSettings.survivorNameESP)
-    data.nameLabel.Text = showName and displayText or ""
-    data.nameLabel.Visible = showName
+    if espData.NameLabel then
+        espData.NameLabel.Text = displayText
+        espData.NameLabel.Visible = showName
+    end
     
-    if data.hpLabel then
-        local humanoid = model:FindFirstChild("Humanoid")
+    local humanoid = model:FindFirstChild("Humanoid")
+    if espData.HpLabel then
         if humanoid then
-            local hp = math.floor(humanoid.Health)
-            local maxhp = math.floor(humanoid.MaxHealth)
-            data.hpLabel.Text = string.format("血量: %d/%d", hp, maxhp)
+            espData.HpLabel.Text = string.format("血量: %d/%d", math.floor(humanoid.Health), math.floor(humanoid.MaxHealth))
         end
         local showHealth = (isKiller and ESPSettings.killerHealthESP) or (not isKiller and ESPSettings.survivorHealthESP)
-        data.hpLabel.Visible = showHealth
+        espData.HpLabel.Visible = showHealth
     end
     
-    local highlight = model:FindFirstChild("TAOWARE_Highlight")
-    if highlight then
-        if isKiller then
-            highlight.FillTransparency = ESPSettings.killerFillTransparency
-            highlight.OutlineTransparency = ESPSettings.killerOutlineTransparency
-        else
-            highlight.FillTransparency = ESPSettings.survivorFillTransparency
-            highlight.OutlineTransparency = ESPSettings.survivorOutlineTransparency
-        end
+    if espData.Highlight then
+        local fillTrans = isKiller and ESPSettings.killerFillTransparency or ESPSettings.survivorFillTransparency
+        local outlineTrans = isKiller and ESPSettings.killerOutlineTransparency or ESPSettings.survivorOutlineTransparency
+        espData.Highlight.FillTransparency = fillTrans
+        espData.Highlight.OutlineTransparency = outlineTrans
     end
 end
 
-local function UpdateGeneratorProgress(data)
-    if not data or not data.model or not data.progressLabel then return end
-    local model = data.model
-    local progress = model:FindFirstChild("Progress")
-    if progress then
-        local progressValue = math.floor(progress.Value)
-        data.progressLabel.Text = string.format("进度: %d%%", progressValue)
+local function UpdateObjectVisibility(espData)
+    if not espData.Billboard then return end
+    local textLabel = espData.Billboard:FindFirstChildOfClass("TextLabel")
+    if not textLabel then return end
+    
+    local showName = false
+    local objType = espData.ObjectType
+    
+    if objType == "generator" then showName = ESPSettings.showGeneratorName
+    elseif objType == "item" then showName = ESPSettings.showItemName
+    elseif objType == "pizza" then showName = ESPSettings.showPizzaName
+    elseif objType == "pizzaDelivery" then showName = ESPSettings.showPizzaDeliveryName
+    elseif objType == "zombie" then showName = ESPSettings.showZombieName
+    elseif objType == "taphTripwire" then showName = ESPSettings.showTaphTripwireName
+    elseif objType == "tripMine" then showName = ESPSettings.showTripMineName
+    elseif objType == "twoTimeRespawn" then showName = ESPSettings.showTwoTimeRespawnName
+    elseif objType == "graffiti" then showName = ESPSettings.showGraffitiName
+    elseif objType == "folders" then showName = ESPSettings.showFoldersName
     end
+    
+    textLabel.Visible = showName
 end
 
-local function UpdateAllPlayerESPText()
-    for _, data in ipairs(PlayerESPData) do
-        UpdatePlayerBillboardText(data)
-    end
-end
-
-local function UpdateObjectNameVisibility()
-    for _, data in ipairs(ObjectESPData) do
-        if data.billboard and data.billboard:FindFirstChildOfClass("TextLabel") then
-            local textLabel = data.billboard:FindFirstChildOfClass("TextLabel")
-            local showName = false
-            if data.objectType == "generator" then
-                showName = ESPSettings.showGeneratorName
-            elseif data.objectType == "item" then
-                showName = ESPSettings.showItemName
-            elseif data.objectType == "pizza" then
-                showName = ESPSettings.showPizzaName
-            elseif data.objectType == "pizzaDelivery" then
-                showName = ESPSettings.showPizzaDeliveryName
-            elseif data.objectType == "zombie" then
-                showName = ESPSettings.showZombieName
-            elseif data.objectType == "taphTripwire" then
-                showName = ESPSettings.showTaphTripwireName
-            elseif data.objectType == "tripMine" then
-                showName = ESPSettings.showTripMineName
-            elseif data.objectType == "twoTimeRespawn" then
-                showName = ESPSettings.showTwoTimeRespawnName
-            elseif data.objectType == "graffiti" then
-                showName = ESPSettings.showGraffitiName
-            elseif data.objectType == "folders" then
-                showName = ESPSettings.showFoldersName
-            end
-            textLabel.Visible = showName
-        end
-    end
-end
-
-local function CreateNametag(adornee, text, color)
-    if Nametags[adornee] then 
-        pcall(function()
-            Nametags[adornee].Parent:Destroy()
-        end)
-        Nametags[adornee] = nil
-    end
-    local billboard = Instance.new("BillboardGui")
-    billboard.Adornee = adornee
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Enabled = true
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = text
-    textLabel.TextColor3 = color
-    textLabel.TextStrokeTransparency = 0
-    textLabel.TextStrokeColor3 = Color3.new(0,0,0)
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 6
-    textLabel.Parent = billboard
-    billboard.Parent = adornee
-    Nametags[adornee] = textLabel
-end
-
-function EspLib:CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDelivery, isZombie, isKiller, isTaph, isTripMine, isRespawn, isGraffiti, isFolders)
+function EspLib.CreateESP(model, color, config)
     if not model then return end
     if model:FindFirstChild("TAOWARE_Highlight") then return end
-    if isGenerator and model:FindFirstChild("Progress") and model.Progress.Value == 100 then return end
+    if ESPObjects[model] then return end
+    
+    config = config or {}
+    local isKiller = config.isKiller or false
+    local isGenerator = config.isGenerator or false
+    local objectType = config.objectType or ""
+    
+    if isGenerator then
+        local progress = model:FindFirstChild("Progress")
+        if progress and progress.Value >= 100 then return end
+    end
+    
     if IsRagdoll(model) then return end
-
+    
     local targetPart
-    local objectType = ""
     if isGenerator then
         targetPart = GetGeneratorPart(model)
-        objectType = "generator"
-    elseif isItem then
-        targetPart = model:FindFirstChild("ItemRoot")
-        objectType = "item"
-    elseif isPizza then
+    elseif config.objectType == "pizza" or config.objectType == "graffiti" or config.objectType == "folders" then
         targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
-        objectType = "pizza"
-    elseif isPizzaDelivery then
-        targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
-        objectType = "pizzaDelivery"
-    elseif isZombie then
-        targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
-        objectType = "zombie"
-    elseif isTaph then
-        if model:IsA("Model") then
-            targetPart = GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        else
-            targetPart = model
-        end
-        objectType = "taphTripwire"
-    elseif isTripMine then
-        if model:IsA("Model") then
-            targetPart = GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        else
-            targetPart = model
-        end
-        objectType = "tripMine"
-    elseif isRespawn then
-        if model:IsA("Model") then
-            targetPart = GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-        else
-            targetPart = model
-        end
-        objectType = "twoTimeRespawn"
-    elseif isGraffiti then
-        targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
-        objectType = "graffiti"
-    elseif isFolders then
-        targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
-        objectType = "folders"
     else
-        targetPart = model:FindFirstChild("HumanoidRootPart")
+        targetPart = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart", true)
     end
-
+    
     if not targetPart then return end
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "TAOWARE_Highlight"
-    highlight.Adornee = model
-    highlight.FillColor = color
-    highlight.OutlineColor = color
+    
+    local fillTrans = 0.7
+    local outlineTrans = 0.3
     
     if isKiller then
-        highlight.FillTransparency = ESPSettings.killerFillTransparency
-        highlight.OutlineTransparency = ESPSettings.killerOutlineTransparency
-    elseif not isGenerator and not isItem and not isPizza and not isPizzaDelivery and not isZombie and not isTaph and not isTripMine and not isRespawn and not isGraffiti and not isFolders then
-        highlight.FillTransparency = ESPSettings.survivorFillTransparency
-        highlight.OutlineTransparency = ESPSettings.survivorOutlineTransparency
-    else
-        highlight.FillTransparency = 0.7
-        highlight.OutlineTransparency = 0.3
+        fillTrans = ESPSettings.killerFillTransparency
+        outlineTrans = ESPSettings.killerOutlineTransparency
+    elseif not isGenerator and not objectType then
+        fillTrans = ESPSettings.survivorFillTransparency
+        outlineTrans = ESPSettings.survivorOutlineTransparency
     end
     
-    highlight.Parent = model
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "TAOWARE_Billboard"
-    billboard.Adornee = targetPart
-    billboard.Size = UDim2.new(0, 100, 0, 30)
-    billboard.StudsOffset = Vector3.new(0, 4, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = model
-
-    if not isGenerator and not isItem and not isPizza and not isPizzaDelivery and not isZombie and not isTaph and not isTripMine and not isRespawn and not isGraffiti and not isFolders then
+    local highlight = CreateHighlight(model, color, color, fillTrans, outlineTrans)
+    local billboard, textLabel = CreateBillboard(targetPart, model, color)
+    
+    local espData = {
+        Model = model,
+        Highlight = highlight,
+        Billboard = billboard,
+        NameLabel = nil,
+        HpLabel = nil,
+        IsKiller = isKiller,
+        ObjectType = objectType,
+        Color = color
+    }
+    
+    if not isGenerator and not objectType then
         local humanoid = model:FindFirstChild("Humanoid")
         
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(1, 0, 0.33, 0)
-        nameLabel.Position = UDim2.new(0, 0, 0, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = "加载中..."
-        nameLabel.Font = Enum.Font.GothamBlack
-        nameLabel.TextColor3 = color
-        nameLabel.TextSize = 8
-        nameLabel.TextStrokeTransparency = 0.6
-        nameLabel.Parent = billboard
-
+        textLabel.Size = UDim2.new(1, 0, 0.33, 0)
+        textLabel.Position = UDim2.new(0, 0, 0, 0)
+        textLabel.Text = "加载中..."
+        
         local hpLabel = Instance.new("TextLabel")
         hpLabel.Size = UDim2.new(1, 0, 0.33, 0)
         hpLabel.Position = UDim2.new(0, 0, 0.3, 0)
         hpLabel.BackgroundTransparency = 1
-        hpLabel.Text = "血量: " .. (humanoid and string.format("%.0f", humanoid.Health) or "N/A")
+        hpLabel.Text = "血量: N/A"
         hpLabel.Font = Enum.Font.GothamBlack
         hpLabel.TextColor3 = color
         hpLabel.TextSize = 8
         hpLabel.TextStrokeTransparency = 0.6
         hpLabel.Parent = billboard
-
-        local espData = {
-            model = model, 
-            nameLabel = nameLabel, 
-            hpLabel = hpLabel, 
-            color = color,
-            isKiller = isKiller
-        }
         
-        table.insert(PlayerESPData, espData)
+        espData.NameLabel = textLabel
+        espData.HpLabel = hpLabel
         
-        UpdatePlayerBillboardText(espData)
+        UpdatePlayerESP(espData)
         
-        model:GetAttributeChangedSignal("ActorDisplayName"):Connect(function()
-            UpdatePlayerBillboardText(espData)
+        local conn1 = model:GetAttributeChangedSignal("ActorDisplayName"):Connect(function()
+            UpdatePlayerESP(espData)
+        end)
+        local conn2 = model:GetAttributeChangedSignal("SkinNameDisplay"):Connect(function()
+            UpdatePlayerESP(espData)
+        end)
+        local conn3 = model:GetAttributeChangedSignal("IsFakeNoli"):Connect(function()
+            UpdatePlayerESP(espData)
         end)
         
-        model:GetAttributeChangedSignal("SkinNameDisplay"):Connect(function()
-            UpdatePlayerBillboardText(espData)
-        end)
-        
-        model:GetAttributeChangedSignal("IsFakeNoli"):Connect(function()
-            UpdatePlayerBillboardText(espData)
-        end)
+        espData._connections = {conn1, conn2, conn3}
         
         if humanoid then
-            humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-                UpdatePlayerBillboardText(espData)
+            local conn4 = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                UpdatePlayerESP(espData)
             end)
-            humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
-                UpdatePlayerBillboardText(espData)
+            local conn5 = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+                UpdatePlayerESP(espData)
             end)
+            table.insert(espData._connections, conn4)
+            table.insert(espData._connections, conn5)
         end
     elseif isGenerator then
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-        nameLabel.Position = UDim2.new(0, 0, 0, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = "发电机"
-        nameLabel.Font = Enum.Font.GothamBlack
-        nameLabel.TextColor3 = color
-        nameLabel.TextSize = 8
-        nameLabel.TextStrokeTransparency = 0.6
-        nameLabel.Visible = ESPSettings.showGeneratorName
-        nameLabel.Parent = billboard
+        textLabel.Size = UDim2.new(1, 0, 0.5, 0)
+        textLabel.Position = UDim2.new(0, 0, 0, 0)
+        textLabel.Text = "发电机"
+        textLabel.Visible = ESPSettings.showGeneratorName
         
         local progressLabel = Instance.new("TextLabel")
         progressLabel.Size = UDim2.new(1, 0, 0.5, 0)
@@ -440,141 +361,136 @@ function EspLib:CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDel
         progressLabel.TextStrokeTransparency = 0.6
         progressLabel.Parent = billboard
         
-        local espData = {
-            model = model,
-            nameLabel = nameLabel,
-            progressLabel = progressLabel,
-            highlight = highlight,
-            billboard = billboard,
-            objectType = objectType
-        }
-        
-        table.insert(ObjectESPData, espData)
-        
-        UpdateGeneratorProgress(espData)
+        espData.NameLabel = textLabel
         
         local progress = model:FindFirstChild("Progress")
         if progress then
-            progress:GetPropertyChangedSignal("Value"):Connect(function()
-                UpdateGeneratorProgress(espData)
-            end)
+            local function updateProgress()
+                progressLabel.Text = string.format("进度: %d%%", math.floor(progress.Value))
+            end
+            updateProgress()
+            local conn = progress:GetPropertyChangedSignal("Value"):Connect(updateProgress)
+            espData._connections = {conn}
         end
     else
-        local displayName = model.Name
-        if isPizza then displayName = "披萨" end
-        if isPizzaDelivery then displayName = "披萨送货员" end
-        if isZombie then displayName = "僵尸" end
-        if isTaph then displayName = "绊线" end
-        if isTripMine then displayName = "地雷" end
-        if isRespawn then displayName = "重生点" end
-        if isGraffiti then displayName = "涂鸦" end
-        if isFolders then displayName = "任务文件" end
+        local displayNames = {
+            item = "道具",
+            pizza = "披萨",
+            pizzaDelivery = "披萨送货员",
+            zombie = "僵尸",
+            taphTripwire = "绊线",
+            tripMine = "地雷",
+            twoTimeRespawn = "重生点",
+            graffiti = "涂鸦",
+            folders = "任务文件"
+        }
         
-        local showName = false
-        if isPizza then showName = ESPSettings.showPizzaName
-        elseif isPizzaDelivery then showName = ESPSettings.showPizzaDeliveryName
-        elseif isZombie then showName = ESPSettings.showZombieName
-        elseif isTaph then showName = ESPSettings.showTaphTripwireName
-        elseif isTripMine then showName = ESPSettings.showTripMineName
-        elseif isRespawn then showName = ESPSettings.showTwoTimeRespawnName
-        elseif isGraffiti then showName = ESPSettings.showGraffitiName
-        elseif isFolders then showName = ESPSettings.showFoldersName
-        elseif isItem then showName = ESPSettings.showItemName
-        end
-        
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 1, 0)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = displayName
-        textLabel.Font = Enum.Font.GothamBlack
-        textLabel.TextColor3 = color
-        textLabel.TextSize = 8
-        textLabel.TextStrokeTransparency = 0.6
-        textLabel.Visible = showName
-        textLabel.Parent = billboard
-
-        table.insert(ObjectESPData, {model = model, highlight = highlight, billboard = billboard, type = displayName, objectType = objectType})
+        textLabel.Text = displayNames[objectType] or model.Name
+        textLabel.Visible = false
+        UpdateObjectVisibility(espData)
     end
-end
-
-function EspLib:RemoveESP(model)
-    if not model then return end
-    for i = #PlayerESPData, 1, -1 do
-        if PlayerESPData[i].model == model then
-            table.remove(PlayerESPData, i)
-        end
-    end
-    for i = #ObjectESPData, 1, -1 do
-        if ObjectESPData[i].model == model then
-            table.remove(ObjectESPData, i)
-        end
-    end
-    pcall(function()
-        if model:FindFirstChild("TAOWARE_Highlight") then
-            model.TAOWARE_Highlight:Destroy()
-        end
-        if model:FindFirstChild("TAOWARE_Billboard") then
-            model.TAOWARE_Billboard:Destroy()
+    
+    ESPObjects[model] = espData
+    
+    local destroyConn = model.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            EspLib.RemoveESP(model)
         end
     end)
+    espData._destroyConn = destroyConn
 end
 
-function EspLib:CreateTracer(model, part, color)
-    if not model or not part or not part:IsA("BasePart") then return end
-    if TracerData[model] then return end
+function EspLib.RemoveESP(model)
+    if not model then return end
+    local espData = ESPObjects[model]
+    if not espData then return end
+    
+    if espData._connections then
+        for _, conn in ipairs(espData._connections) do
+            SafeDestroy(conn)
+        end
+        espData._connections = nil
+    end
+    
+    if espData._destroyConn then
+        SafeDestroy(espData._destroyConn)
+        espData._destroyConn = nil
+    end
+    
+    SafeDestroy(espData.Highlight)
+    SafeDestroy(espData.Billboard)
+    
+    espData.Highlight = nil
+    espData.Billboard = nil
+    espData.Model = nil
+    
+    ESPObjects[model] = nil
+    EspLib.RemoveTracer(model)
+end
 
+function EspLib.CreateTracer(model, part, color)
+    if not model or not part or not part:IsA("BasePart") then return end
+    if ActiveTracers[model] then return end
+    
     local line = Drawing.new("Line")
     line.Visible = true
     line.Color = color or Color3.fromRGB(255, 255, 255)
     line.Thickness = 2
     line.Transparency = 1
-
-    TracerData[model] = {line = line, part = part}
+    
+    ActiveTracers[model] = {Line = line, Part = part}
 end
 
-function EspLib:RemoveTracer(model)
-    if TracerData[model] then
-        pcall(function()
-            TracerData[model].line.Visible = false
-            TracerData[model].line:Remove()
-        end)
-        TracerData[model] = nil
-    end
+function EspLib.RemoveTracer(model)
+    local tracerData = ActiveTracers[model]
+    if not tracerData then return end
+    
+    pcall(function()
+        tracerData.Line.Visible = false
+        tracerData.Line:Remove()
+    end)
+    ActiveTracers[model] = nil
 end
 
-function EspLib:UpdateTracers()
-    for model, data in pairs(TracerData) do
-        local line = data.line
-        local part = data.part
-        if line and part and part.Parent then
-            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-            if onScreen then
-                line.Visible = true
-                line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                line.To = Vector2.new(pos.X, pos.Y)
-            else
-                line.Visible = false
-            end
+function EspLib.UpdateTracers()
+    local viewportSize = Camera.ViewportSize
+    local centerX = viewportSize.X / 2
+    local bottomY = viewportSize.Y
+    
+    for model, data in pairs(ActiveTracers) do
+        local part = data.Part
+        local line = data.Line
+        
+        if not part or not part.Parent then
+            EspLib.RemoveTracer(model)
+            continue
+        end
+        
+        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if onScreen then
+            line.Visible = true
+            line.From = Vector2.new(centerX, bottomY)
+            line.To = Vector2.new(pos.X, pos.Y)
         else
-            EspLib:RemoveTracer(model)
+            line.Visible = false
         end
     end
 end
 
-function EspLib:UpdateFakeNolis()
+function EspLib.UpdateFakeNolis()
     local playersFolder = Services.Workspace:FindFirstChild("Players")
     if not playersFolder then return end
     local killers = playersFolder:FindFirstChild("Killers")
     if not killers then return end
     
-    for _, killer in ipairs(killers:GetChildren()) do
+    for _, killer in killers:GetChildren() do
         if killer:GetAttribute("ActorDisplayName") == "Noli" then
             killer:SetAttribute("IsFakeNoli", false)
         end
     end
     
     noliByUsername = {}
-    for _, killer in ipairs(killers:GetChildren()) do
+    for _, killer in killers:GetChildren() do
         if killer:GetAttribute("ActorDisplayName") == "Noli" then
             local username = killer:GetAttribute("Username")
             if username then
@@ -585,7 +501,8 @@ function EspLib:UpdateFakeNolis()
             end
         end
     end
-    for username, models in pairs(noliByUsername) do
+    
+    for _, models in pairs(noliByUsername) do
         if #models > 1 then
             for i = 2, #models do
                 models[i]:SetAttribute("IsFakeNoli", true)
@@ -597,13 +514,12 @@ function EspLib:UpdateFakeNolis()
     end
 end
 
-function EspLib:AddHighlightAdvanced(obj, config)
-    if Highlights[obj] then 
-        pcall(function()
-            Highlights[obj]:Destroy()
-        end)
-        Highlights[obj] = nil
+function EspLib.AddHighlightAdvanced(obj, config)
+    if AdvancedHighlights[obj] then
+        SafeDestroy(AdvancedHighlights[obj])
+        AdvancedHighlights[obj] = nil
     end
+    
     local hl = Instance.new("Highlight")
     hl.Adornee = obj
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -611,388 +527,410 @@ function EspLib:AddHighlightAdvanced(obj, config)
     hl.OutlineColor = config.Color
     hl.FillColor = config.Color
     hl.OutlineTransparency = 0
-    local alwaysFill = table.find({"BuildermanDispenser","BuildermanSentry","PizzaDeliveryRig","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow"}, obj.Name)
-    hl.FillTransparency = config.OutlineOnly and 1 or (alwaysFill and 0.65 or 1)
+    
+    local alwaysFill = table.find({"BuildermanDispenser","BuildermanSentry","PizzaDeliveryRig","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow"}, obj.Name) ~= nil
+    hl.FillTransparency = config.OutlineOnly and not alwaysFill and 1 or (alwaysFill and 0.65 or 1)
     hl.Parent = obj
-    Highlights[obj] = hl
+    
+    AdvancedHighlights[obj] = hl
+    
     obj.AncestryChanged:Connect(function(_, parent)
         if not parent then
-            if Highlights[obj] then 
-                pcall(function()
-                    Highlights[obj]:Destroy()
-                end)
-                Highlights[obj] = nil
+            if AdvancedHighlights[obj] then
+                SafeDestroy(AdvancedHighlights[obj])
+                AdvancedHighlights[obj] = nil
             end
-            if Nametags[obj] then 
-                pcall(function()
-                    Nametags[obj].Parent:Destroy()
-                end)
-                Nametags[obj] = nil
+            if AdvancedNametags[obj] then
+                SafeDestroy(AdvancedNametags[obj].Parent)
+                AdvancedNametags[obj] = nil
             end
         end
     end)
 end
 
-function EspLib:ApplyToTargetAdvanced(target, config)
-    if not target or not target.Parent then return end
-    self:AddHighlightAdvanced(target, config)
-end
-
-function EspLib:HandleAdvanced(obj)
+function EspLib.HandleAdvanced(obj)
     if table.find(AdvancedNames, obj.Name) or (obj.Name == "Shadow" and obj.Parent and obj.Parent.Name == "Shadows") then
-        self:ApplyToTargetAdvanced(obj, AdvancedSettings)
+        EspLib.AddHighlightAdvanced(obj, AdvancedSettings)
     end
 end
 
-function EspLib:UpdateAdvancedHighlights()
-    for obj, hl in pairs(Highlights) do
-        if not hl or not hl.Parent then continue end
+function EspLib.UpdateAdvancedHighlights()
+    for obj, hl in pairs(AdvancedHighlights) do
+        if not hl or not hl.Parent then
+            AdvancedHighlights[obj] = nil
+            continue
+        end
+        
         hl.Enabled = AdvancedSettings.Enabled
         hl.OutlineColor = AdvancedSettings.Color
         hl.FillColor = AdvancedSettings.Color
         hl.OutlineTransparency = 0
-        hl.FillTransparency = AdvancedSettings.OutlineOnly and 1 or 0.65
+        
+        local alwaysFill = table.find({"BuildermanDispenser","BuildermanSentry","PizzaDeliveryRig","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow"}, obj.Name) ~= nil
+        hl.FillTransparency = AdvancedSettings.OutlineOnly and not alwaysFill and 1 or 0.65
+        
         if AdvancedSettings.ShowNametag then
-            local baseName = obj.Name
-            local nameText = baseName
-            if Nametags[obj] then
-                Nametags[obj].Text = nameText
-                Nametags[obj].TextColor3 = AdvancedSettings.Color
+            local nametag = AdvancedNametags[obj]
+            if not nametag then
+                local billboard = Instance.new("BillboardGui")
+                billboard.Adornee = obj
+                billboard.Size = UDim2.new(0, 200, 0, 50)
+                billboard.StudsOffset = Vector3.new(0, 3, 0)
+                billboard.AlwaysOnTop = true
+                billboard.Enabled = true
+                
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.BackgroundTransparency = 1
+                textLabel.TextColor3 = AdvancedSettings.Color
+                textLabel.TextStrokeTransparency = 0
+                textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+                textLabel.Font = Enum.Font.GothamBold
+                textLabel.TextSize = 6
+                textLabel.Text = obj.Name
+                textLabel.Parent = billboard
+                
+                billboard.Parent = obj
+                AdvancedNametags[obj] = textLabel
             else
-                CreateNametag(obj, nameText, AdvancedSettings.Color)
+                nametag.TextColor3 = AdvancedSettings.Color
+                nametag.Text = obj.Name
             end
         else
-            if Nametags[obj] then
-                pcall(function()
-                    Nametags[obj].Parent:Destroy()
-                end)
-                Nametags[obj] = nil
+            local nametag = AdvancedNametags[obj]
+            if nametag then
+                SafeDestroy(nametag.Parent)
+                AdvancedNametags[obj] = nil
             end
         end
     end
 end
 
-function EspLib:UpdateESP()
-    local mapFolder = Services.Workspace:FindFirstChild("Map")
-    if not mapFolder or not mapFolder:FindFirstChild("Ingame") then
-        for i = #PlayerESPData, 1, -1 do
-            EspLib:RemoveESP(PlayerESPData[i].model)
+local function ProcessPlayerESP(character, isKiller)
+    if not character or not character.Parent then return end
+    if character == LocalPlayer.Character then return end
+    if IsRagdoll(character) then
+        EspLib.RemoveESP(character)
+        return
+    end
+    
+    local player = Services.Players:GetPlayerFromCharacter(character)
+    if not player or IsSpectating(player) then
+        EspLib.RemoveESP(character)
+        return
+    end
+    
+    local shouldESP = isKiller and ESPSettings.killerESP or ESPSettings.playerESP
+    local shouldTracer = isKiller and ESPSettings.killerTracers or ESPSettings.survivorTracers
+    local color = isKiller and ESPSettings.killerColor or ESPSettings.survivorColor
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    
+    if shouldESP and hrp and not character:FindFirstChild("TAOWARE_Highlight") then
+        EspLib.CreateESP(character, color, {isKiller = isKiller})
+    elseif not shouldESP then
+        EspLib.RemoveESP(character)
+    end
+    
+    if shouldTracer and hrp then
+        EspLib.CreateTracer(character, hrp, color)
+    else
+        EspLib.RemoveTracer(character)
+    end
+end
+
+local function ProcessGenerators()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame or not ingame:FindFirstChild("Map") then return end
+    
+    for _, gen in ingame.Map:GetChildren() do
+        if not gen:IsA("Model") then continue end
+        if not gen.Name:lower():find("generator") then continue end
+        if gen.Name == "FakeGenerator" then continue end
+        
+        local progress = gen:FindFirstChild("Progress")
+        local isComplete = progress and progress.Value >= 100
+        
+        if ESPSettings.generatorESP and not isComplete and not gen:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(gen, ESPSettings.generatorColor, {
+                isGenerator = true,
+                objectType = "generator"
+            })
+        elseif not ESPSettings.generatorESP or isComplete then
+            EspLib.RemoveESP(gen)
         end
-        for i = #ObjectESPData, 1, -1 do
-            EspLib:RemoveESP(ObjectESPData[i].model)
+        
+        if ESPSettings.generatorTracers and not isComplete then
+            local part = GetGeneratorPart(gen)
+            if part then
+                EspLib.CreateTracer(gen, part, ESPSettings.generatorColor)
+            end
+        else
+            EspLib.RemoveTracer(gen)
         end
-        for model in pairs(TracerData) do
-            EspLib:RemoveTracer(model)
+    end
+end
+
+local function ProcessItems()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame or not ingame:FindFirstChild("Map") then return end
+    
+    for _, item in ingame.Map:GetDescendants() do
+        if item.Name ~= "ItemRoot" then continue end
+        if not item.Parent or not item.Parent:IsA("Model") then continue end
+        
+        local itemModel = item.Parent
+        
+        if ESPSettings.itemESP and not itemModel:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(itemModel, ESPSettings.itemColor, {objectType = "item"})
+        elseif not ESPSettings.itemESP then
+            EspLib.RemoveESP(itemModel)
+        end
+        
+        if ESPSettings.itemTracers and item:IsA("BasePart") then
+            EspLib.CreateTracer(itemModel, item, ESPSettings.itemColor)
+        else
+            EspLib.RemoveTracer(itemModel)
+        end
+    end
+end
+
+local function ProcessPizzas()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, pizza in ingame:GetChildren() do
+        if pizza.Name ~= "Pizza" or not pizza:IsA("BasePart") then continue end
+        
+        if ESPSettings.pizzaEsp and not pizza:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(pizza, ESPSettings.pizzaColor, {objectType = "pizza"})
+        elseif not ESPSettings.pizzaEsp then
+            EspLib.RemoveESP(pizza)
+        end
+        
+        if ESPSettings.pizzaTracers then
+            EspLib.CreateTracer(pizza, pizza, ESPSettings.pizzaColor)
+        else
+            EspLib.RemoveTracer(pizza)
+        end
+    end
+end
+
+local function ProcessDeliveries()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, delivery in ingame:GetChildren() do
+        if not delivery:IsA("Model") then continue end
+        if not table.find(DummyNames, delivery.Name) then continue end
+        
+        local hrp = delivery:FindFirstChild("HumanoidRootPart")
+        
+        if ESPSettings.pizzaDeliveryEsp and hrp and not delivery:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(delivery, ESPSettings.pizzaDeliveryColor, {objectType = "pizzaDelivery"})
+        elseif not ESPSettings.pizzaDeliveryEsp then
+            EspLib.RemoveESP(delivery)
+        end
+        
+        if ESPSettings.pizzaDeliveryTracers and hrp then
+            EspLib.CreateTracer(delivery, hrp, ESPSettings.pizzaDeliveryColor)
+        else
+            EspLib.RemoveTracer(delivery)
+        end
+    end
+end
+
+local function ProcessZombies()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, zombie in ingame:GetChildren() do
+        if zombie.Name ~= "1x1x1x1Zombie" or not zombie:IsA("Model") then continue end
+        
+        local hrp = zombie:FindFirstChild("HumanoidRootPart")
+        
+        if ESPSettings.zombieEsp and hrp and not zombie:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(zombie, ESPSettings.zombieColor, {objectType = "zombie"})
+        elseif not ESPSettings.zombieEsp then
+            EspLib.RemoveESP(zombie)
+        end
+        
+        if ESPSettings.zombieTracers and hrp then
+            EspLib.CreateTracer(zombie, hrp, ESPSettings.zombieColor)
+        else
+            EspLib.RemoveTracer(zombie)
+        end
+    end
+end
+
+local function ProcessSpecialObjects(name, settingESP, settingTracer, color, objectType)
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, obj in ingame:GetChildren() do
+        if obj.Name ~= name or not obj:IsA("Model") then continue end
+        
+        if settingESP and not obj:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(obj, color, {objectType = objectType})
+        elseif not settingESP then
+            EspLib.RemoveESP(obj)
+        end
+        
+        if settingTracer then
+            local part = GetGeneratorPart(obj) or obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
+            if part then
+                EspLib.CreateTracer(obj, part, color)
+            end
+        else
+            EspLib.RemoveTracer(obj)
+        end
+    end
+end
+
+local function ProcessRespawns()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, obj in ingame:GetDescendants() do
+        if not obj or not obj.Name then continue end
+        if not obj.Name:lower():find("respawnlocation") then continue end
+        
+        local target = obj:IsA("Model") and obj or obj:IsA("BasePart") and obj
+        if not target then continue end
+        if IsRagdoll(target) then continue end
+        
+        if ESPSettings.twoTimeRespawnEsp and not target:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(target, ESPSettings.twoTimeRespawnColor, {objectType = "twoTimeRespawn"})
+        elseif not ESPSettings.twoTimeRespawnEsp then
+            EspLib.RemoveESP(target)
+        end
+        
+        if ESPSettings.twoTimeRespawnTracers then
+            local part = target:IsA("Model") and (GetGeneratorPart(target) or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart", true)) or target
+            if part then
+                EspLib.CreateTracer(target, part, ESPSettings.twoTimeRespawnColor)
+            end
+        else
+            EspLib.RemoveTracer(target)
+        end
+    end
+end
+
+local function ProcessGraffiti()
+    local ingame = Services.Workspace:FindFirstChild("Map"):FindFirstChild("Ingame")
+    if not ingame then return end
+    
+    for _, obj in ingame:GetChildren() do
+        if obj.Name ~= "GraffitiCL" or not obj:IsA("BasePart") then continue end
+        
+        if ESPSettings.graffitiEsp and not obj:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(obj, ESPSettings.graffitiColor, {objectType = "graffiti"})
+        elseif not ESPSettings.graffitiEsp then
+            EspLib.RemoveESP(obj)
+        end
+    end
+end
+
+local function ProcessFolders()
+    for _, folder in Services.Workspace:GetChildren() do
+        if not folder:IsA("MeshPart") or folder.Name ~= "Model" then continue end
+        
+        if ESPSettings.foldersEsp and not folder:FindFirstChild("TAOWARE_Highlight") then
+            EspLib.CreateESP(folder, ESPSettings.foldersColor, {objectType = "folders"})
+        elseif not ESPSettings.foldersEsp then
+            EspLib.RemoveESP(folder)
+        end
+    end
+end
+
+function EspLib.UpdateESP()
+    if not Services.Workspace:FindFirstChild("Map") or not Services.Workspace.Map:FindFirstChild("Ingame") then
+        for model in pairs(ESPObjects) do
+            EspLib.RemoveESP(model)
+        end
+        for model in pairs(ActiveTracers) do
+            EspLib.RemoveTracer(model)
         end
         return
     end
-
-    local ingame = mapFolder.Ingame
-
+    
     local playersFolder = Services.Workspace:FindFirstChild("Players")
     if playersFolder then
         local killers = playersFolder:FindFirstChild("Killers")
         if killers then
-            for _, killer in ipairs(killers:GetChildren()) do
-                if killer == LocalPlayer.Character then continue end
-                if IsRagdoll(killer) then
-                    EspLib:RemoveESP(killer)
-                    EspLib:RemoveTracer(killer)
-                    continue
-                end
-                local player = Services.Players:GetPlayerFromCharacter(killer)
-                if not player or IsSpectating(player) then
-                    EspLib:RemoveESP(killer)
-                    EspLib:RemoveTracer(killer)
-                    continue
-                end
-
-                if ESPSettings.killerESP and not killer:FindFirstChild("TAOWARE_Highlight") and killer:FindFirstChild("HumanoidRootPart") then
-                    EspLib:CreateESP(killer, ESPSettings.killerColor, false, false, false, false, false, true)
-                elseif not ESPSettings.killerESP then
-                    EspLib:RemoveESP(killer)
-                end
-
-                if ESPSettings.killerTracers and killer:FindFirstChild("HumanoidRootPart") then
-                    EspLib:CreateTracer(killer, killer.HumanoidRootPart, ESPSettings.killerColor)
-                else
-                    EspLib:RemoveTracer(killer)
-                end
-            end
-        end
-
-        local survivors = playersFolder:FindFirstChild("Survivors")
-        if survivors then
-            for _, survivor in ipairs(survivors:GetChildren()) do
-                if survivor == LocalPlayer.Character then continue end
-                if IsRagdoll(survivor) then
-                    EspLib:RemoveESP(survivor)
-                    EspLib:RemoveTracer(survivor)
-                    continue
-                end
-                local player = Services.Players:GetPlayerFromCharacter(survivor)
-                if not player or IsSpectating(player) then
-                    EspLib:RemoveESP(survivor)
-                    EspLib:RemoveTracer(survivor)
-                    continue
-                end
-
-                if ESPSettings.playerESP and not survivor:FindFirstChild("TAOWARE_Highlight") and survivor:FindFirstChild("HumanoidRootPart") then
-                    EspLib:CreateESP(survivor, ESPSettings.survivorColor, false, false, false, false, false, false)
-                elseif not ESPSettings.playerESP then
-                    EspLib:RemoveESP(survivor)
-                end
-
-                if ESPSettings.survivorTracers and survivor:FindFirstChild("HumanoidRootPart") then
-                    EspLib:CreateTracer(survivor, survivor.HumanoidRootPart, ESPSettings.survivorColor)
-                else
-                    EspLib:RemoveTracer(survivor)
-                end
-            end
-        end
-    end
-
-    if ingame:FindFirstChild("Map") then
-        for _, gen in ipairs(ingame.Map:GetChildren()) do
-            if gen:IsA("Model") and gen.Name:lower():find("generator") and gen.Name ~= "FakeGenerator" then
-                if IsRagdoll(gen) then
-                    EspLib:RemoveESP(gen)
-                    EspLib:RemoveTracer(gen)
-                    continue
-                end
-                local progress = gen:FindFirstChild("Progress")
-                if ESPSettings.generatorESP and progress and progress.Value < 100 and not gen:FindFirstChild("TAOWARE_Highlight") then
-                    EspLib:CreateESP(gen, ESPSettings.generatorColor, true, false, false, false, false, false)
-                elseif not ESPSettings.generatorESP or (progress and progress.Value >= 100) then
-                    EspLib:RemoveESP(gen)
-                end
-
-                if ESPSettings.generatorTracers and progress and progress.Value < 100 then
-                    local part = GetGeneratorPart(gen)
-                    if part then
-                        EspLib:CreateTracer(gen, part, ESPSettings.generatorColor)
-                    end
-                else
-                    EspLib:RemoveTracer(gen)
-                end
+            for _, killer in killers:GetChildren() do
+                ProcessPlayerESP(killer, true)
             end
         end
         
-        for _, item in ipairs(ingame.Map:GetDescendants()) do
-            if item.Name == "ItemRoot" and item.Parent and item.Parent:IsA("Model") then
-                local itemModel = item.Parent
-                if ESPSettings.itemESP and not itemModel:FindFirstChild("TAOWARE_Highlight") then
-                    EspLib:CreateESP(itemModel, ESPSettings.itemColor, false, true, false, false, false, false)
-                elseif not ESPSettings.itemESP then
-                    EspLib:RemoveESP(itemModel)
-                end
-                
-                if ESPSettings.itemTracers and item:IsA("BasePart") then
-                    EspLib:CreateTracer(itemModel, item, ESPSettings.itemColor)
-                else
-                    EspLib:RemoveTracer(itemModel)
-                end
+        local survivors = playersFolder:FindFirstChild("Survivors")
+        if survivors then
+            for _, survivor in survivors:GetChildren() do
+                ProcessPlayerESP(survivor, false)
             end
         end
     end
     
-    for _, pizza in ipairs(ingame:GetChildren()) do
-        if pizza.Name == "Pizza" and pizza:IsA("BasePart") then
-            if ESPSettings.pizzaEsp and not pizza:FindFirstChild("TAOWARE_Highlight") then
-                EspLib:CreateESP(pizza, ESPSettings.pizzaColor, false, false, true, false, false, false)
-            elseif not ESPSettings.pizzaEsp then
-                EspLib:RemoveESP(pizza)
-            end
-            
-            if ESPSettings.pizzaTracers then
-                EspLib:CreateTracer(pizza, pizza, ESPSettings.pizzaColor)
-            else
-                EspLib:RemoveTracer(pizza)
-            end
-        end
-    end
-    
-    for _, delivery in ipairs(ingame:GetChildren()) do
-        if delivery:IsA("Model") and table.find(DummyNames, delivery.Name) then
-            if ESPSettings.pizzaDeliveryEsp and not delivery:FindFirstChild("TAOWARE_Highlight") then
-                local hrp = delivery:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    EspLib:CreateESP(delivery, ESPSettings.pizzaDeliveryColor, false, false, false, true, false, false)
-                end
-            elseif not ESPSettings.pizzaDeliveryEsp then
-                EspLib:RemoveESP(delivery)
-            end
-            
-            if ESPSettings.pizzaDeliveryTracers then
-                local hrp = delivery:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    EspLib:CreateTracer(delivery, hrp, ESPSettings.pizzaDeliveryColor)
-                end
-            else
-                EspLib:RemoveTracer(delivery)
-            end
-        end
-    end
-    
-    for _, zombie in ipairs(ingame:GetChildren()) do
-        if zombie.Name == "1x1x1x1Zombie" and zombie:IsA("Model") then
-            if ESPSettings.zombieEsp and not zombie:FindFirstChild("TAOWARE_Highlight") then
-                local hrp = zombie:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    EspLib:CreateESP(zombie, ESPSettings.zombieColor, false, false, false, false, true, false)
-                end
-            elseif not ESPSettings.zombieEsp then
-                EspLib:RemoveESP(zombie)
-            end
-            
-            if ESPSettings.zombieTracers then
-                local hrp = zombie:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    EspLib:CreateTracer(zombie, hrp, ESPSettings.zombieColor)
-                end
-            else
-                EspLib:RemoveTracer(zombie)
-            end
-        end
-    end
-    
-    for _, obj in ipairs(ingame:GetChildren()) do
-        if obj.Name:match("TaphTripwire$") and obj:IsA("Model") then
-            if ESPSettings.taphTripwireEsp and not obj:FindFirstChild("TAOWARE_Highlight") then
-                EspLib:CreateESP(obj, ESPSettings.taphTripwireColor, false, false, false, false, false, false, true)
-            elseif not ESPSettings.taphTripwireEsp then
-                EspLib:RemoveESP(obj)
-            end
-            
-            if ESPSettings.taphTripwireTracers then
-                local part = GetGeneratorPart(obj) or obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
-                if part then
-                    EspLib:CreateTracer(obj, part, ESPSettings.taphTripwireColor)
-                end
-            else
-                EspLib:RemoveTracer(obj)
-            end
-        end
-    end
-    
-    for _, obj in ipairs(ingame:GetChildren()) do
-        if obj.Name == "SubspaceTripmine" and obj:IsA("Model") then
-            if ESPSettings.tripMineEsp and not obj:FindFirstChild("TAOWARE_Highlight") then
-                EspLib:CreateESP(obj, ESPSettings.tripMineColor, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.tripMineEsp then
-                EspLib:RemoveESP(obj)
-            end
-            
-            if ESPSettings.tripMineTracers then
-                local part = GetGeneratorPart(obj) or obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
-                if part then
-                    EspLib:CreateTracer(obj, part, ESPSettings.tripMineColor)
-                end
-            else
-                EspLib:RemoveTracer(obj)
-            end
-        end
-    end
-    
-    for _, obj in ipairs(ingame:GetDescendants()) do
-        if obj and obj.Name and tostring(obj.Name):lower():find("respawnlocation") then
-            local target = obj
-            if obj:IsA("Model") then
-                target = obj
-            elseif obj:IsA("BasePart") then
-                target = obj
-            else
-                target = obj:FindFirstAncestorOfClass("Model") or (obj:IsA("BasePart") and obj)
-            end
-            
-            if not target or IsRagdoll(target) then continue end
-            
-            if ESPSettings.twoTimeRespawnEsp and not target:FindFirstChild("TAOWARE_Highlight") then
-                if target:IsA("Model") then
-                    EspLib:CreateESP(target, ESPSettings.twoTimeRespawnColor, false, false, false, false, false, false, false, false, true)
-                else
-                    EspLib:CreateESP(target, ESPSettings.twoTimeRespawnColor, false, false, true, false, false, false, false, false, true)
-                end
-            elseif not ESPSettings.twoTimeRespawnEsp then
-                EspLib:RemoveESP(target)
-            end
-            
-            if ESPSettings.twoTimeRespawnTracers then
-                local part = nil
-                if target:IsA("Model") then
-                    part = GetGeneratorPart(target) or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart", true)
-                elseif target:IsA("BasePart") then
-                    part = target
-                end
-                if part then
-                    EspLib:CreateTracer(target, part, ESPSettings.twoTimeRespawnColor)
-                end
-            else
-                EspLib:RemoveTracer(target)
-            end
-        end
-    end
-    
-    for _, obj in ipairs(ingame:GetChildren()) do
-        if obj.Name == "GraffitiCL" and obj:IsA("BasePart") then
-            if ESPSettings.graffitiEsp and not obj:FindFirstChild("TAOWARE_Highlight") then
-                EspLib:CreateESP(obj, ESPSettings.graffitiColor, false, false, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.graffitiEsp then
-                EspLib:RemoveESP(obj)
-            end
-        end
-    end
-    
-    for _, folder in ipairs(Services.Workspace:GetChildren()) do
-        if folder:IsA("MeshPart") and folder.Name == "Model" then
-            if ESPSettings.foldersEsp and not folder:FindFirstChild("TAOWARE_Highlight") then
-                EspLib:CreateESP(folder, ESPSettings.foldersColor, false, false, false, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.foldersEsp then
-                EspLib:RemoveESP(folder)
-            end
+    ProcessGenerators()
+    ProcessItems()
+    ProcessPizzas()
+    ProcessDeliveries()
+    ProcessZombies()
+    ProcessSpecialObjects("TaphTripwire", ESPSettings.taphTripwireEsp, ESPSettings.taphTripwireTracers, ESPSettings.taphTripwireColor, "taphTripwire")
+    ProcessSpecialObjects("SubspaceTripmine", ESPSettings.tripMineEsp, ESPSettings.tripMineTracers, ESPSettings.tripMineColor, "tripMine")
+    ProcessRespawns()
+    ProcessGraffiti()
+    ProcessFolders()
+end
+
+function EspLib.UpdateAllPlayerText()
+    for _, espData in pairs(ESPObjects) do
+        if espData.IsKiller ~= nil then
+            UpdatePlayerESP(espData)
         end
     end
 end
 
-function EspLib:GetSettings()
+function EspLib.UpdateObjectNames()
+    for _, espData in pairs(ESPObjects) do
+        if espData.ObjectType ~= "" then
+            UpdateObjectVisibility(espData)
+        end
+    end
+end
+
+function EspLib.GetSettings()
     return ESPSettings
 end
 
-function EspLib:GetAdvancedSettings()
+function EspLib.GetAdvancedSettings()
     return AdvancedSettings
 end
 
-function EspLib:UpdateAllPlayerText()
-    UpdateAllPlayerESPText()
-end
-
-function EspLib:UpdateObjectNames()
-    UpdateObjectNameVisibility()
-end
-
-function EspLib:StartLoop()
+function EspLib.StartLoop()
     task.spawn(function()
         while true do
-            self:UpdateESP()
-            self:UpdateFakeNolis()
+            EspLib.UpdateESP()
+            EspLib.UpdateFakeNolis()
             task.wait(0.5)
         end
     end)
     
     RunService.RenderStepped:Connect(function()
-        self:UpdateTracers()
+        EspLib.UpdateTracers()
     end)
     
-    for _, v in ipairs(MapFolder:GetDescendants()) do 
-        self:HandleAdvanced(v) 
+    for _, v in MapFolder:GetDescendants() do
+        EspLib.HandleAdvanced(v)
     end
+    
     MapFolder.DescendantAdded:Connect(function(v)
-        self:HandleAdvanced(v)
+        EspLib.HandleAdvanced(v)
     end)
     
     task.spawn(function()
-        while task.wait(0.3) do
-            self:UpdateAdvancedHighlights()
+        while true do
+            EspLib.UpdateAdvancedHighlights()
+            task.wait(0.3)
         end
     end)
 end
