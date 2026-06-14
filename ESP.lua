@@ -88,17 +88,13 @@ local ESPSettings = {
     showTripMineName = true,
     showTwoTimeRespawnName = true,
     showGraffitiName = true,
-    showFoldersName = true,
-    showDistance = false,
-    showHealthBar = false,
-    limitDistance = false,
-    maxDistance = 150
+    showFoldersName = true
 }
 
 local AdvancedSettings = {
-    Enabled = false,
-    OutlineOnly = true,
-    ShowNametag = false,
+    Enabled = false, 
+    OutlineOnly = true, 
+    ShowNametag = false, 
     Color = Color3.fromRGB(0, 255, 255)
 }
 
@@ -169,7 +165,7 @@ local function UpdatePlayerBillboardText(data)
     local actorText = model:GetAttribute("ActorDisplayName") or (isKiller and "杀手" or "幸存者")
     local skinText = model:GetAttribute("SkinNameDisplay")
     
-    if actorText == "Noli" and model:GetAttribute("IsFakeNoli") == true and _G.ShowFakeNoli ~= false then
+    if actorText == "Noli" and model:GetAttribute("IsFakeNoli") == true then
         actorText = actorText .. " (假)"
     end
     
@@ -177,10 +173,6 @@ local function UpdatePlayerBillboardText(data)
     local showSkin = (isKiller and ESPSettings.killerSkinESP) or (not isKiller and ESPSettings.survivorSkinESP)
     if showSkin and skinText and tostring(skinText) ~= "" then
         displayText = displayText .. " | " .. skinText
-    end
-    
-    if ESPSettings.showDistance and data.distance then
-        displayText = displayText .. " | " .. math.floor(data.distance) .. "m"
     end
     
     local showName = (isKiller and ESPSettings.killerNameESP) or (not isKiller and ESPSettings.survivorNameESP)
@@ -193,26 +185,9 @@ local function UpdatePlayerBillboardText(data)
             local hp = math.floor(humanoid.Health)
             local maxhp = math.floor(humanoid.MaxHealth)
             data.hpLabel.Text = string.format("血量: %d/%d", hp, maxhp)
-            data.hpLabel.Visible = (isKiller and ESPSettings.killerHealthESP) or (not isKiller and ESPSettings.survivorHealthESP)
-        else
-            data.hpLabel.Visible = false
         end
-    end
-    
-    if ESPSettings.showHealthBar and data.healthBar then
-        local humanoid = model:FindFirstChild("Humanoid")
-        if humanoid then
-            local hpPercent = humanoid.Health / humanoid.MaxHealth
-            data.healthBar.Size = UDim2.new(hpPercent, 0, 1, 0)
-            local r = 1 - hpPercent
-            local g = hpPercent
-            data.healthBar.BackgroundColor3 = Color3.new(r, g, 0)
-            data.healthBar.Visible = true
-        else
-            data.healthBar.Visible = false
-        end
-    elseif data.healthBar then
-        data.healthBar.Visible = false
+        local showHealth = (isKiller and ESPSettings.killerHealthESP) or (not isKiller and ESPSettings.survivorHealthESP)
+        data.hpLabel.Visible = showHealth
     end
     
     local highlight = model:FindFirstChild("TAOWARE_Highlight")
@@ -239,14 +214,7 @@ end
 
 local function UpdateAllPlayerESPText()
     for _, data in ipairs(PlayerESPData) do
-        if data.model and data.model.Parent then
-            if ESPSettings.showDistance and data.model:FindFirstChild("HumanoidRootPart") then
-                local hrp = data.model.HumanoidRootPart
-                local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
-                data.distance = distance
-            end
-            UpdatePlayerBillboardText(data)
-        end
+        UpdatePlayerBillboardText(data)
     end
 end
 
@@ -313,14 +281,6 @@ function EspLib:CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDel
     if model:FindFirstChild("TAOWARE_Highlight") then return end
     if isGenerator and model:FindFirstChild("Progress") and model.Progress.Value == 100 then return end
     if IsRagdoll(model) then return end
-    
-    if ESPSettings.limitDistance then
-        local rootPart = GetModelRootPart(model)
-        if rootPart then
-            local distance = (Camera.CFrame.Position - rootPart.Position).Magnitude
-            if distance > ESPSettings.maxDistance then return end
-        end
-    end
 
     local targetPart
     local objectType = ""
@@ -394,7 +354,7 @@ function EspLib:CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDel
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "TAOWARE_Billboard"
     billboard.Adornee = targetPart
-    billboard.Size = UDim2.new(0, 120, 0, 50)
+    billboard.Size = UDim2.new(0, 100, 0, 30)
     billboard.StudsOffset = Vector3.new(0, 4, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent = model
@@ -423,30 +383,16 @@ function EspLib:CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDel
         hpLabel.TextSize = 8
         hpLabel.TextStrokeTransparency = 0.6
         hpLabel.Parent = billboard
-        
-        local healthBar = Instance.new("Frame")
-        healthBar.Size = UDim2.new(1, 0, 0.1, 0)
-        healthBar.Position = UDim2.new(0, 0, 0.65, 0)
-        healthBar.BackgroundColor3 = Color3.new(0, 1, 0)
-        healthBar.BorderSizePixel = 0
-        healthBar.Visible = false
-        healthBar.Parent = billboard
 
         local espData = {
             model = model, 
             nameLabel = nameLabel, 
-            hpLabel = hpLabel,
-            healthBar = healthBar,
+            hpLabel = hpLabel, 
             color = color,
-            isKiller = isKiller,
-            distance = 0
+            isKiller = isKiller
         }
         
         table.insert(PlayerESPData, espData)
-        
-        if ESPSettings.showDistance and targetPart then
-            espData.distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-        end
         
         UpdatePlayerBillboardText(espData)
         
@@ -576,11 +522,6 @@ end
 function EspLib:CreateTracer(model, part, color)
     if not model or not part or not part:IsA("BasePart") then return end
     if TracerData[model] then return end
-    
-    if ESPSettings.limitDistance then
-        local distance = (Camera.CFrame.Position - part.Position).Magnitude
-        if distance > ESPSettings.maxDistance then return end
-    end
 
     local line = Drawing.new("Line")
     line.Visible = true
@@ -606,13 +547,6 @@ function EspLib:UpdateTracers()
         local line = data.line
         local part = data.part
         if line and part and part.Parent then
-            if ESPSettings.limitDistance then
-                local distance = (Camera.CFrame.Position - part.Position).Magnitude
-                if distance > ESPSettings.maxDistance then
-                    line.Visible = false
-                    goto continue
-                end
-            end
             local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
             if onScreen then
                 line.Visible = true
@@ -624,7 +558,6 @@ function EspLib:UpdateTracers()
         else
             EspLib:RemoveTracer(model)
         end
-        ::continue::
     end
 end
 
@@ -1042,7 +975,6 @@ function EspLib:StartLoop()
         while true do
             self:UpdateESP()
             self:UpdateFakeNolis()
-            UpdateAllPlayerESPText()
             task.wait(0.5)
         end
     end)
