@@ -1,365 +1,339 @@
-local EspLib = {}
+local EuphoriaESP = {}
 
 local Services = {
-    Players = game:GetService("Players"),
-    RunService = game:GetService("RunService"),
-    Workspace = game:GetService("Workspace"),
+    Workspace = cloneref(game:GetService("Workspace")),
+    RunService = cloneref(game:GetService("RunService")),
+    Players = cloneref(game:GetService("Players")),
+    CoreGui = game:GetService("CoreGui"),
+    Lighting = cloneref(game:GetService("Lighting"))
 }
 
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = Services.Workspace.CurrentCamera
-local RunService = Services.RunService
-local MapFolder = Services.Workspace:WaitForChild("Map"):WaitForChild("Ingame")
+local Workspace, RunService, Players, CoreGui, Lighting = Services.Workspace, Services.RunService, Services.Players, Services.CoreGui, Services.Lighting
+local lplayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+local Cam = camera
 
-local DummyNames = {
-    "PizzaDeliveryRig", "Mafiaso1", "Mafiaso2", "Builderman", "Elliot",
-    "ShedletskyCORRUPT", "ChancecORRUPT", "ChanceCORRUPT", "Mafia1", "Mafia2",
-    "Mafia3", "Mafia4", "Mafia5", "Mafia6", "Mafia7", "Mafia8", "Mafia9",
-    "GreenGuy", "RedGuy", "BlueGuy", "PurpleGuy", "PinkGuy", "YellowGuy",
-    "OrangeGuy", "GreyGuy"
+local ESP = {
+    Enabled = true,
+    MaxDistance = 200,
+    FontSize = 11,
+    FadeOut = {
+        OnDistance = true,
+        OnDeath = false,
+        OnLeave = false,
+    },
+    Options = { 
+        Friendcheck = true, FriendcheckRGB = Color3.fromRGB(0, 255, 0),
+        Highlight = false, HighlightRGB = Color3.fromRGB(255, 0, 0),
+    },
+    Drawing = {
+        Chams = {
+            Enabled = true,
+            KillerEnabled = true,
+            SurvivorEnabled = true,
+            Thermal = true,
+            FillRGB = Color3.fromRGB(119, 120, 255),
+            Fill_Transparency = 100,
+            OutlineRGB = Color3.fromRGB(119, 120, 255),
+            Outline_Transparency = 100,
+            VisibleCheck = false,
+            KillerColor = Color3.fromRGB(150, 0, 255),
+            SurvivorColor = Color3.fromRGB(0, 255, 255),
+        },
+        Names = {
+            Enabled = true,
+            RGB = Color3.fromRGB(255, 255, 255),
+            KillerShow = true,
+            SurvivorShow = true,
+            ShowSkin = true,
+        },
+        Flags = {Enabled = true},
+        Distances = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
+        Healthbar = {
+            Enabled = true, HealthText = true, Lerp = false, HealthTextRGB = Color3.fromRGB(119, 120, 255),
+            Width = 2.5,
+            KillerDefaultColor = Color3.fromRGB(255, 0, 0),
+            SurvivorDefaultColor = Color3.fromRGB(0, 255, 0),
+        },
+        Boxes = {
+            Animate = true, RotationSpeed = 300,
+            Gradient = false, GradientRGB1 = Color3.fromRGB(119, 120, 255), GradientRGB2 = Color3.fromRGB(0, 0, 0), 
+            GradientFill = true, GradientFillRGB1 = Color3.fromRGB(119, 120, 255), GradientFillRGB2 = Color3.fromRGB(0, 0, 0), 
+            Filled = {Enabled = true, Transparency = 0.75, RGB = Color3.fromRGB(0, 0, 0)},
+            Full = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
+            Corner = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
+        },
+    },
+    Connections = {RunService = RunService},
+    Fonts = {},
 }
 
-local AdvancedNames = {
-    "BuildermanDispenser","BuildermanSentry","HumanoidRootProjectile",
-    "Swords","shockwave","Voidstar","Shadow"
-}
+local Euphoria = ESP.Connections
+local RotationAngle, Tick = -45, tick()
+local ScreenGui = nil
 
-local ObjectESPData = {}
-local Highlights = {}
-local Nametags = {}
-
-local ESPSettings = {
-    generatorESP = false,
-    itemESP = false,
-    pizzaEsp = false,
-    pizzaDeliveryEsp = false,
-    zombieEsp = false,
-    taphTripwireEsp = false,
-    tripMineEsp = false,
-    twoTimeRespawnEsp = false,
-    graffitiEsp = false,
-    foldersEsp = false,
-    generatorColor = Color3.fromRGB(200, 100, 200),
-    itemColor = Color3.fromRGB(200, 200, 0),
-    pizzaColor = Color3.fromRGB(200, 150, 0),
-    pizzaDeliveryColor = Color3.fromRGB(200, 100, 100),
-    zombieColor = Color3.fromRGB(200, 100, 100),
-    taphTripwireColor = Color3.fromRGB(100, 0, 100),
-    tripMineColor = Color3.fromRGB(255, 0, 255),
-    twoTimeRespawnColor = Color3.fromRGB(0, 150, 200),
-    graffitiColor = Color3.fromRGB(255, 255, 255),
-    foldersColor = Color3.fromRGB(255, 204, 51),
-    limitDistance = false,
-    maxDistance = 150
-}
-
-local AdvancedSettings = {
-    Enabled = false,
-    OutlineOnly = true,
-    ShowNametag = false,
-    Color = Color3.fromRGB(0, 255, 255)
-}
-
-local function IsRagdoll(model)
-    local ragdolls = Services.Workspace:FindFirstChild("Ragdolls")
-    if not ragdolls then return false end
-    return model:IsDescendantOf(ragdolls) or (model.Parent == ragdolls)
+local function IsKiller(plr)
+    if not plr or not plr.Character then return false end
+    local playersFolder = Workspace:FindFirstChild("Players")
+    if playersFolder then
+        local killers = playersFolder:FindFirstChild("Killers")
+        if killers and plr.Character:IsDescendantOf(killers) then return true end
+    end
+    if plr.Team and plr.Team.Name == "Killers" then return true end
+    return false
 end
 
-local function GetGeneratorPart(model)
-    if not model then return nil end
-    local instances = model:FindFirstChild("Instances")
-    if instances then
-        local generator = instances:FindFirstChild("Generator")
-        if generator then
-            local cube = generator:FindFirstChild("Cube.003")
-            if cube and cube:IsA("BasePart") then return cube end
-            for _, v in ipairs(generator:GetDescendants()) do
-                if v:IsA("BasePart") then return v end
+local function IsSurvivor(plr)
+    if plr == lplayer then return false end
+    if IsKiller(plr) then return false end
+    local playersFolder = Workspace:FindFirstChild("Players")
+    if playersFolder then
+        local survivors = playersFolder:FindFirstChild("Survivors")
+        if survivors and plr.Character and plr.Character:IsDescendantOf(survivors) then return true end
+    end
+    if plr.Team and plr.Team.Name == "Survivors" then return true end
+    return false
+end
+
+local function GetRoleName(plr)
+    if not plr or not plr.Character then return "" end
+    local actorName = plr.Character:GetAttribute("ActorDisplayName")
+    if actorName and actorName ~= "" then return actorName end
+    return ""
+end
+
+local function GetSkinName(plr)
+    if not plr or not plr.Character then return "" end
+    local skinName = plr.Character:GetAttribute("SkinNameDisplay")
+    if skinName and skinName ~= "" then return skinName end
+    return ""
+end
+
+local function IsFakeNoli(plr)
+    if not plr or not plr.Character then return false end
+    if plr.Character:GetAttribute("ActorDisplayName") == "Noli" and plr.Character:GetAttribute("IsFakeNoli") == true then return true end
+    return false
+end
+
+local function UpdateFakeNolis()
+    local playersFolder = Workspace:FindFirstChild("Players")
+    if not playersFolder then return end
+    local killers = playersFolder:FindFirstChild("Killers")
+    if not killers then return end
+    for _, killer in ipairs(killers:GetChildren()) do
+        if killer:GetAttribute("ActorDisplayName") == "Noli" then killer:SetAttribute("IsFakeNoli", false) end
+    end
+    local noliByUsername = {}
+    for _, killer in ipairs(killers:GetChildren()) do
+        if killer:GetAttribute("ActorDisplayName") == "Noli" then
+            local username = killer:GetAttribute("Username")
+            if username then
+                if not noliByUsername[username] then noliByUsername[username] = {} end
+                table.insert(noliByUsername[username], killer)
             end
         end
-        for _, v in ipairs(instances:GetDescendants()) do
-            if v:IsA("BasePart") and tostring(v.Name):lower():find("cube") then return v end
-        end
     end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") and v.Name:lower():find("cube") then return v end
+    for _, models in pairs(noliByUsername) do
+        if #models > 1 then for i = 2, #models do models[i]:SetAttribute("IsFakeNoli", true) end end
     end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") then return v end
-    end
-    return nil
 end
 
-local function GetModelRootPart(model)
-    if not model then return nil end
-    if model:IsA("BasePart") then return model end
-    local hrp = model:FindFirstChild("HumanoidRootPart")
-    if hrp then return hrp end
-    local primary = model.PrimaryPart
-    if primary then return primary end
-    for _, v in ipairs(model:GetChildren()) do
-        if v:IsA("BasePart") then return v end
-    end
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BasePart") then return v end
-    end
-    return nil
+local Functions = {}
+function Functions.Create(Class, Properties)
+    local _Instance = typeof(Class) == 'string' and Instance.new(Class) or Class
+    for Property, Value in pairs(Properties) do _Instance[Property] = Value end
+    return _Instance
 end
 
-local function CreateNametag(adornee, text, color)
-    if Nametags[adornee] then
-        pcall(function() Nametags[adornee].Parent:Destroy() end)
-        Nametags[adornee] = nil
-    end
-    local billboard = Instance.new("BillboardGui")
-    billboard.Adornee = adornee
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Enabled = true
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = text
-    textLabel.TextColor3 = color
-    textLabel.TextStrokeTransparency = 0
-    textLabel.TextStrokeColor3 = Color3.new(0,0,0)
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 6
-    textLabel.Parent = billboard
-    billboard.Parent = adornee
-    Nametags[adornee] = textLabel
+function Functions.FadeOutOnDist(element, distance)
+    local transparency = math.max(0.1, 1 - (distance / ESP.MaxDistance))
+    if element:IsA("TextLabel") then element.TextTransparency = 1 - transparency
+    elseif element:IsA("ImageLabel") then element.ImageTransparency = 1 - transparency
+    elseif element:IsA("UIStroke") then element.Transparency = 1 - transparency
+    elseif element:IsA("Frame") then element.BackgroundTransparency = 1 - transparency
+    elseif element:IsA("Highlight") then element.FillTransparency = 1 - transparency; element.OutlineTransparency = 1 - transparency end
 end
 
-local function CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDelivery, isZombie, isTaph, isTripMine, isRespawn, isGraffiti, isFolders)
-    if not model then return end
-    if model:FindFirstChild("TAOWARE_Highlight") then return end
-    if isGenerator and model:FindFirstChild("Progress") and model.Progress.Value == 100 then return end
-    if IsRagdoll(model) then return end
+local function CreateESPForPlayer(plr)
+    if ScreenGui:FindFirstChild(plr.Name) then ScreenGui[plr.Name]:Destroy() end
+    local RoleName = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, -35), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 0), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
+    local Name = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, -11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
+    local Distance = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, 11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
+    local Box = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.75, BorderSizePixel = 0})
+    local Gradient1 = Functions.Create("UIGradient", {Parent = Box, Enabled = ESP.Drawing.Boxes.GradientFill, Color = ColorSequence.new{ColorSequenceKeypoint.new(0, ESP.Drawing.Boxes.GradientFillRGB1), ColorSequenceKeypoint.new(1, ESP.Drawing.Boxes.GradientFillRGB2)}})
+    local Outline = Functions.Create("UIStroke", {Parent = Box, Enabled = ESP.Drawing.Boxes.Gradient, Transparency = 0, Color = Color3.fromRGB(255, 255, 255), LineJoinMode = Enum.LineJoinMode.Miter})
+    local Gradient2 = Functions.Create("UIGradient", {Parent = Outline, Enabled = ESP.Drawing.Boxes.Gradient, Color = ColorSequence.new{ColorSequenceKeypoint.new(0, ESP.Drawing.Boxes.GradientRGB1), ColorSequenceKeypoint.new(1, ESP.Drawing.Boxes.GradientRGB2)}})
+    local Healthbar = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0})
+    local BehindHealthbar = Functions.Create("Frame", {Parent = ScreenGui, ZIndex = -1, BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0})
+    local HealthText = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, 31), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0)})
+    local Chams = Functions.Create("Highlight", {Parent = ScreenGui, FillTransparency = 1, OutlineTransparency = 0, OutlineColor = Color3.fromRGB(119, 120, 255), DepthMode = "Occluded"})
+    local LeftTop = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local LeftSide = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local RightTop = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local RightSide = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local BottomSide = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local BottomDown = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local BottomRightSide = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+    local BottomRightDown = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
 
-    if ESPSettings.limitDistance then
-        local rootPart = GetModelRootPart(model)
-        if rootPart then
-            local distance = (Camera.CFrame.Position - rootPart.Position).Magnitude
-            if distance > ESPSettings.maxDistance then return end
-        end
+    local Connection
+    local function HideESP()
+        Box.Visible = false; RoleName.Visible = false; Name.Visible = false; Distance.Visible = false
+        Healthbar.Visible = false; BehindHealthbar.Visible = false; HealthText.Visible = false
+        LeftTop.Visible = false; LeftSide.Visible = false; BottomSide.Visible = false; BottomDown.Visible = false
+        RightTop.Visible = false; RightSide.Visible = false; BottomRightSide.Visible = false; BottomRightDown.Visible = false
+        Chams.Enabled = false
+        if not plr then if ScreenGui then ScreenGui:Destroy() end; if Connection then Connection:Disconnect() end end
     end
 
-    local targetPart
-    local objectType = ""
-    if isGenerator then targetPart = GetGeneratorPart(model); objectType = "generator"
-    elseif isItem then targetPart = model:FindFirstChild("ItemRoot"); objectType = "item"
-    elseif isPizza then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true); objectType = "pizza"
-    elseif isPizzaDelivery then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true); objectType = "pizzaDelivery"
-    elseif isZombie then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true); objectType = "zombie"
-    elseif isTaph then targetPart = model:IsA("Model") and (GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) or model; objectType = "taphTripwire"
-    elseif isTripMine then targetPart = model:IsA("Model") and (GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) or model; objectType = "tripMine"
-    elseif isRespawn then targetPart = model:IsA("Model") and (GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) or model; objectType = "twoTimeRespawn"
-    elseif isGraffiti then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true); objectType = "graffiti"
-    elseif isFolders then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true); objectType = "folders"
-    else return end
+    Connection = Euphoria.RunService.RenderStepped:Connect(function()
+        if IsFakeNoli(plr) then HideESP(); return end
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local HRP = plr.Character.HumanoidRootPart
+            local Humanoid = plr.Character:FindFirstChild("Humanoid")
+            if not Humanoid then return end
+            local Pos, OnScreen = Cam:WorldToScreenPoint(HRP.Position)
+            local Dist = (Cam.CFrame.Position - HRP.Position).Magnitude / 3.5714285714
+            if OnScreen and Dist <= ESP.MaxDistance then
+                local Size = HRP.Size.Y
+                local scaleFactor = (Size * Cam.ViewportSize.Y) / (Pos.Z * 2)
+                local w, h = 3 * scaleFactor, 4.5 * scaleFactor
 
-    if not targetPart then return end
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "TAOWARE_Highlight"
-    highlight.Adornee = model
-    highlight.FillColor = color
-    highlight.OutlineColor = color
-    highlight.FillTransparency = 0.7
-    highlight.OutlineTransparency = 0.3
-    highlight.Parent = model
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "TAOWARE_Billboard"
-    billboard.Adornee = targetPart
-    billboard.Size = UDim2.new(0, 120, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 4, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = model
-
-    local displayName = model.Name
-    if isPizza then displayName = "Pizza"
-    elseif isPizzaDelivery then displayName = "Pizza Delivery"
-    elseif isZombie then displayName = "Zombie"
-    elseif isTaph then displayName = "Tripwire"
-    elseif isTripMine then displayName = "Tripmine"
-    elseif isRespawn then displayName = "Respawn Point"
-    elseif isGraffiti then displayName = "Graffiti"
-    elseif isFolders then displayName = "Mission Folder"
-    elseif isGenerator then displayName = "Generator"
-    elseif isItem then displayName = "Item" end
-
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 1, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = displayName
-    textLabel.Font = Enum.Font.GothamBlack
-    textLabel.TextColor3 = color
-    textLabel.TextSize = 8
-    textLabel.TextStrokeTransparency = 0.6
-    textLabel.Visible = true
-    textLabel.Parent = billboard
-
-    if isGenerator then
-        local progressLabel = Instance.new("TextLabel")
-        progressLabel.Size = UDim2.new(1, 0, 0.5, 0)
-        progressLabel.Position = UDim2.new(0, 0, 0.5, 0)
-        progressLabel.BackgroundTransparency = 1
-        progressLabel.Text = "Progress: 0%"
-        progressLabel.Font = Enum.Font.GothamBlack
-        progressLabel.TextColor3 = color
-        progressLabel.TextSize = 8
-        progressLabel.TextStrokeTransparency = 0.6
-        progressLabel.Parent = billboard
-
-        local espData = {model = model, nameLabel = textLabel, progressLabel = progressLabel, highlight = highlight, billboard = billboard, objectType = objectType}
-        table.insert(ObjectESPData, espData)
-
-        local progress = model:FindFirstChild("Progress")
-        if progress then
-            progress:GetPropertyChangedSignal("Value"):Connect(function()
-                if espData.progressLabel then
-                    espData.progressLabel.Text = string.format("Progress: %d%%", math.floor(progress.Value))
+                if ESP.FadeOut.OnDistance then
+                    Functions.FadeOutOnDist(Box, Dist); Functions.FadeOutOnDist(Outline, Dist)
+                    Functions.FadeOutOnDist(RoleName, Dist); Functions.FadeOutOnDist(Name, Dist)
+                    Functions.FadeOutOnDist(Distance, Dist); Functions.FadeOutOnDist(Healthbar, Dist)
+                    Functions.FadeOutOnDist(BehindHealthbar, Dist); Functions.FadeOutOnDist(HealthText, Dist)
+                    Functions.FadeOutOnDist(LeftTop, Dist); Functions.FadeOutOnDist(LeftSide, Dist)
+                    Functions.FadeOutOnDist(BottomSide, Dist); Functions.FadeOutOnDist(BottomDown, Dist)
+                    Functions.FadeOutOnDist(RightTop, Dist); Functions.FadeOutOnDist(RightSide, Dist)
+                    Functions.FadeOutOnDist(BottomRightSide, Dist); Functions.FadeOutOnDist(BottomRightDown, Dist)
+                    Functions.FadeOutOnDist(Chams, Dist)
                 end
-            end)
-        end
-    else
-        table.insert(ObjectESPData, {model = model, highlight = highlight, billboard = billboard, type = displayName, objectType = objectType})
-    end
-end
 
-local function RemoveESP(model)
-    if not model then return end
-    for i = #ObjectESPData, 1, -1 do
-        if ObjectESPData[i].model == model then table.remove(ObjectESPData, i) end
-    end
-    pcall(function()
-        if model:FindFirstChild("TAOWARE_Highlight") then model.TAOWARE_Highlight:Destroy() end
-        if model:FindFirstChild("TAOWARE_Billboard") then model.TAOWARE_Billboard:Destroy() end
+                local isKiller = IsKiller(plr)
+                local isSurvivor = IsSurvivor(plr)
+
+                if (isKiller or isSurvivor) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
+                    -- Chams
+                    Chams.Adornee = plr.Character
+                    local shouldShowChams = false
+                    if ESP.Drawing.Chams.Enabled then
+                        if isKiller and ESP.Drawing.Chams.KillerEnabled then shouldShowChams = true
+                        elseif isSurvivor and ESP.Drawing.Chams.SurvivorEnabled then shouldShowChams = true end
+                    end
+                    Chams.Enabled = shouldShowChams
+                    if shouldShowChams then
+                        if isKiller then Chams.FillColor = ESP.Drawing.Chams.KillerColor; Chams.OutlineColor = ESP.Drawing.Chams.KillerColor
+                        elseif isSurvivor then Chams.FillColor = ESP.Drawing.Chams.SurvivorColor; Chams.OutlineColor = ESP.Drawing.Chams.SurvivorColor end
+                    end
+                    if ESP.Drawing.Chams.Thermal then
+                        local breathe_effect = math.atan(math.sin(tick() * 2)) * 2 / math.pi
+                        Chams.FillTransparency = ESP.Drawing.Chams.Fill_Transparency * breathe_effect * 0.01
+                        Chams.OutlineTransparency = ESP.Drawing.Chams.Outline_Transparency * breathe_effect * 0.01
+                    end
+                    Chams.DepthMode = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
+
+                    -- Corner Box
+                    LeftTop.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    LeftTop.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y - h / 2); LeftTop.Size = UDim2.new(0, w / 5, 0, 1)
+                    LeftSide.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    LeftSide.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y - h / 2); LeftSide.Size = UDim2.new(0, 1, 0, h / 5)
+                    BottomSide.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    BottomSide.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y + h / 2); BottomSide.Size = UDim2.new(0, 1, 0, h / 5); BottomSide.AnchorPoint = Vector2.new(0, 5)
+                    BottomDown.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    BottomDown.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y + h / 2); BottomDown.Size = UDim2.new(0, w / 5, 0, 1); BottomDown.AnchorPoint = Vector2.new(0, 1)
+                    RightTop.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    RightTop.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y - h / 2); RightTop.Size = UDim2.new(0, w / 5, 0, 1); RightTop.AnchorPoint = Vector2.new(1, 0)
+                    RightSide.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    RightSide.Position = UDim2.new(0, Pos.X + w / 2 - 1, 0, Pos.Y - h / 2); RightSide.Size = UDim2.new(0, 1, 0, h / 5); RightSide.AnchorPoint = Vector2.new(0, 0)
+                    BottomRightSide.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    BottomRightSide.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y + h / 2); BottomRightSide.Size = UDim2.new(0, 1, 0, h / 5); BottomRightSide.AnchorPoint = Vector2.new(1, 1)
+                    BottomRightDown.Visible = ESP.Drawing.Boxes.Corner.Enabled
+                    BottomRightDown.Position = UDim2.new(0, Pos.X + w / 2, 0, Pos.Y + h / 2); BottomRightDown.Size = UDim2.new(0, w / 5, 0, 1); BottomRightDown.AnchorPoint = Vector2.new(1, 1)
+
+                    -- Full Box
+                    Box.Position = UDim2.new(0, Pos.X - w / 2, 0, Pos.Y - h / 2); Box.Size = UDim2.new(0, w, 0, h)
+                    Box.Visible = ESP.Drawing.Boxes.Full.Enabled
+                    if ESP.Drawing.Boxes.Filled.Enabled then
+                        Box.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                        Box.BackgroundTransparency = ESP.Drawing.Boxes.GradientFill and ESP.Drawing.Boxes.Filled.Transparency or 1
+                        Box.BorderSizePixel = 1
+                    else Box.BackgroundTransparency = 1 end
+                    RotationAngle = RotationAngle + (tick() - Tick) * ESP.Drawing.Boxes.RotationSpeed * math.cos(math.pi / 4 * tick() - math.pi / 2)
+                    if ESP.Drawing.Boxes.Animate then Gradient1.Rotation = RotationAngle; Gradient2.Rotation = RotationAngle
+                    else Gradient1.Rotation = -45; Gradient2.Rotation = -45 end
+                    Tick = tick()
+
+                    -- Healthbar
+                    local health = Humanoid.Health / Humanoid.MaxHealth
+                    Healthbar.Visible = ESP.Drawing.Healthbar.Enabled
+                    Healthbar.Position = UDim2.new(0, Pos.X - w / 2 - 6, 0, Pos.Y - h / 2 + h * (1 - health))
+                    Healthbar.Size = UDim2.new(0, ESP.Drawing.Healthbar.Width, 0, h * health)
+                    BehindHealthbar.Visible = ESP.Drawing.Healthbar.Enabled
+                    BehindHealthbar.Position = UDim2.new(0, Pos.X - w / 2 - 6, 0, Pos.Y - h / 2)
+                    BehindHealthbar.Size = UDim2.new(0, ESP.Drawing.Healthbar.Width, 0, h)
+                    if isKiller then Healthbar.BackgroundColor3 = ESP.Drawing.Healthbar.KillerDefaultColor
+                    elseif isSurvivor then Healthbar.BackgroundColor3 = ESP.Drawing.Healthbar.SurvivorDefaultColor end
+                    if ESP.Drawing.Healthbar.HealthText then
+                        local healthPercentage = math.floor(Humanoid.Health / Humanoid.MaxHealth * 100)
+                        HealthText.Position = UDim2.new(0, Pos.X - w / 2 - 6, 0, Pos.Y - h / 2 + h * (1 - healthPercentage / 100) + 3)
+                        HealthText.Text = tostring(healthPercentage)
+                        HealthText.Visible = Humanoid.Health < Humanoid.MaxHealth
+                        HealthText.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
+                    end
+
+                    -- Names
+                    local roleName = GetRoleName(plr); local skinName = GetSkinName(plr)
+                    local shouldShowRole = false
+                    if isKiller and ESP.Drawing.Names.KillerShow then shouldShowRole = true
+                    elseif isSurvivor and ESP.Drawing.Names.SurvivorShow then shouldShowRole = true end
+                    if roleName ~= "" and shouldShowRole then
+                        RoleName.Visible = true
+                        RoleName.Text = (ESP.Drawing.Names.ShowSkin and skinName ~= "") and string.format("%s | %s", roleName, skinName) or roleName
+                        RoleName.Position = UDim2.new(0, Pos.X, 0, Pos.Y - h / 2 - 35)
+                        RoleName.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
+                    else RoleName.Visible = false end
+
+                    local shouldShowName = false
+                    if ESP.Drawing.Names.Enabled then
+                        if isKiller and ESP.Drawing.Names.KillerShow then shouldShowName = true
+                        elseif isSurvivor and ESP.Drawing.Names.SurvivorShow then shouldShowName = true end
+                    end
+                    Name.Visible = shouldShowName
+                    if shouldShowName then
+                        local roleTag = isKiller and "K" or "S"
+                        local roleColor = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
+                        Name.Text = string.format('(<font color="rgb(%d, %d, %d)">%s</font>) %s', roleColor.R * 255, roleColor.G * 255, roleColor.B * 255, roleTag, plr.Name)
+                        Name.Position = UDim2.new(0, Pos.X, 0, Pos.Y - h / 2 - 11)
+                    end
+
+                    -- Distance
+                    if ESP.Drawing.Distances.Enabled then
+                        Distance.Position = UDim2.new(0, Pos.X, 0, Pos.Y + h / 2 + 7)
+                        Distance.Text = string.format("%d meters", math.floor(Dist))
+                        Distance.Visible = true
+                    end
+                else HideESP() end
+            else HideESP() end
+        else HideESP() end
     end)
 end
 
-local function AddHighlightAdvanced(Obj, Config)
-    if Highlights[Obj] then pcall(function() Highlights[Obj]:Destroy() end); Highlights[Obj] = nil end
-    local hl = Instance.new("Highlight")
-    hl.Adornee = Obj; hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; hl.Enabled = Config.Enabled
-    hl.OutlineColor = Config.Color; hl.FillColor = Config.Color; hl.OutlineTransparency = 0
-    local alwaysFill = table.find({"BuildermanDispenser","BuildermanSentry","PizzaDeliveryRig","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow"}, Obj.Name)
-    hl.FillTransparency = Config.OutlineOnly and 1 or (alwaysFill and 0.65 or 1)
-    hl.Parent = Obj; Highlights[Obj] = hl
-    Obj.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            if Highlights[Obj] then pcall(function() Highlights[Obj]:Destroy() end); Highlights[Obj] = nil end
-            if Nametags[Obj] then pcall(function() Nametags[Obj].Parent:Destroy() end); Nametags[Obj] = nil end
-        end
-    end)
+function EuphoriaESP.Start()
+    if ScreenGui then ScreenGui:Destroy() end
+    ScreenGui = Functions.Create("ScreenGui", {Parent = CoreGui, Name = "ESPHolder", ResetOnSpawn = false})
+    task.spawn(function() while task.wait(0.5) do UpdateFakeNolis() end end)
+    for _, v in pairs(Players:GetPlayers()) do
+        if v.Name ~= lplayer.Name then CreateESPForPlayer(v) end
+    end
+    Players.PlayerAdded:Connect(function(v) CreateESPForPlayer(v) end)
 end
 
-local function HandleAdvanced(obj)
-    if table.find(AdvancedNames, obj.Name) or (obj.Name == "Shadow" and obj.Parent and obj.Parent.Name == "Shadows") then
-        AddHighlightAdvanced(obj, AdvancedSettings)
-    end
+function EuphoriaESP.Stop()
+    if ScreenGui then ScreenGui:Destroy(); ScreenGui = nil end
 end
 
-local function UpdateAdvancedHighlights()
-    for obj, hl in pairs(Highlights) do
-        if not hl or not hl.Parent then continue end
-        hl.Enabled = AdvancedSettings.Enabled; hl.OutlineColor = AdvancedSettings.Color; hl.FillColor = AdvancedSettings.Color
-        hl.OutlineTransparency = 0; hl.FillTransparency = AdvancedSettings.OutlineOnly and 1 or 0.65
-        if AdvancedSettings.ShowNametag then
-            local nameText = obj.Name
-            if Nametags[obj] then Nametags[obj].Text = nameText; Nametags[obj].TextColor3 = AdvancedSettings.Color
-            else CreateNametag(obj, nameText, AdvancedSettings.Color) end
-        else
-            if Nametags[obj] then pcall(function() Nametags[obj].Parent:Destroy() end); Nametags[obj] = nil end
-        end
-    end
-end
+function EuphoriaESP.GetSettings() return ESP end
 
-local function UpdateESP()
-    local mapFolder = Services.Workspace:FindFirstChild("Map")
-    if not mapFolder or not mapFolder:FindFirstChild("Ingame") then
-        for i = #ObjectESPData, 1, -1 do RemoveESP(ObjectESPData[i].model) end
-        return
-    end
-    local ingame = mapFolder.Ingame
-
-    if ingame:FindFirstChild("Map") then
-        for _, gen in ipairs(ingame.Map:GetChildren()) do
-            if gen:IsA("Model") and gen.Name:lower():find("generator") and gen.Name ~= "FakeGenerator" then
-                if IsRagdoll(gen) then RemoveESP(gen); continue end
-                local progress = gen:FindFirstChild("Progress")
-                if ESPSettings.generatorESP and progress and progress.Value < 100 and not gen:FindFirstChild("TAOWARE_Highlight") then CreateESP(gen, ESPSettings.generatorColor, true)
-                elseif not ESPSettings.generatorESP or (progress and progress.Value >= 100) then RemoveESP(gen) end
-            end
-        end
-        for _, item in ipairs(ingame.Map:GetDescendants()) do
-            if item.Name == "ItemRoot" and item.Parent and item.Parent:IsA("Model") then
-                local itemModel = item.Parent
-                if ESPSettings.itemESP and not itemModel:FindFirstChild("TAOWARE_Highlight") then CreateESP(itemModel, ESPSettings.itemColor, false, true)
-                elseif not ESPSettings.itemESP then RemoveESP(itemModel) end
-            end
-        end
-    end
-    for _, pizza in ipairs(ingame:GetChildren()) do
-        if pizza.Name == "Pizza" and pizza:IsA("BasePart") then
-            if ESPSettings.pizzaEsp and not pizza:FindFirstChild("TAOWARE_Highlight") then CreateESP(pizza, ESPSettings.pizzaColor, false, false, true)
-            elseif not ESPSettings.pizzaEsp then RemoveESP(pizza) end
-        end
-    end
-    for _, delivery in ipairs(ingame:GetChildren()) do
-        if delivery:IsA("Model") and table.find(DummyNames, delivery.Name) then
-            if ESPSettings.pizzaDeliveryEsp and not delivery:FindFirstChild("TAOWARE_Highlight") then
-                if delivery:FindFirstChild("HumanoidRootPart") then CreateESP(delivery, ESPSettings.pizzaDeliveryColor, false, false, false, true) end
-            elseif not ESPSettings.pizzaDeliveryEsp then RemoveESP(delivery) end
-        end
-    end
-    for _, zombie in ipairs(ingame:GetChildren()) do
-        if zombie.Name == "1x1x1x1Zombie" and zombie:IsA("Model") then
-            if ESPSettings.zombieEsp and not zombie:FindFirstChild("TAOWARE_Highlight") then
-                if zombie:FindFirstChild("HumanoidRootPart") then CreateESP(zombie, ESPSettings.zombieColor, false, false, false, false, true) end
-            elseif not ESPSettings.zombieEsp then RemoveESP(zombie) end
-        end
-    end
-    for _, obj in ipairs(ingame:GetChildren()) do
-        if obj.Name:match("TaphTripwire$") and obj:IsA("Model") then
-            if ESPSettings.taphTripwireEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.taphTripwireColor, false, false, false, false, false, true)
-            elseif not ESPSettings.taphTripwireEsp then RemoveESP(obj) end
-        end
-        if obj.Name == "SubspaceTripmine" and obj:IsA("Model") then
-            if ESPSettings.tripMineEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.tripMineColor, false, false, false, false, false, false, true)
-            elseif not ESPSettings.tripMineEsp then RemoveESP(obj) end
-        end
-        if obj.Name == "GraffitiCL" and obj:IsA("BasePart") then
-            if ESPSettings.graffitiEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.graffitiColor, false, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.graffitiEsp then RemoveESP(obj) end
-        end
-    end
-    for _, obj in ipairs(ingame:GetDescendants()) do
-        if obj and obj.Name and tostring(obj.Name):lower():find("respawnlocation") then
-            local target = obj:IsA("Model") and obj or obj:IsA("BasePart") and obj or (obj:FindFirstAncestorOfClass("Model") or obj)
-            if not target or IsRagdoll(target) then continue end
-            if ESPSettings.twoTimeRespawnEsp and not target:FindFirstChild("TAOWARE_Highlight") then CreateESP(target, ESPSettings.twoTimeRespawnColor, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.twoTimeRespawnEsp then RemoveESP(target) end
-        end
-    end
-    for _, folder in ipairs(Services.Workspace:GetChildren()) do
-        if folder:IsA("MeshPart") and folder.Name == "Model" then
-            if ESPSettings.foldersEsp and not folder:FindFirstChild("TAOWARE_Highlight") then CreateESP(folder, ESPSettings.foldersColor, false, false, false, false, false, false, false, false, false, true)
-            elseif not ESPSettings.foldersEsp then RemoveESP(folder) end
-        end
-    end
-end
-
-for _, v in ipairs(MapFolder:GetDescendants()) do HandleAdvanced(v) end
-MapFolder.DescendantAdded:Connect(HandleAdvanced)
-
-task.spawn(function() while task.wait(0.5) do UpdateESP() end end)
-task.spawn(function() while task.wait(0.3) do UpdateAdvancedHighlights() end end)
-
-function EspLib.GetSettings() return ESPSettings end
-function EspLib.GetAdvancedSettings() return AdvancedSettings end
-
-return EspLib
+return EuphoriaESP
