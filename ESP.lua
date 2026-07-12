@@ -31,24 +31,25 @@ local ESP = {
             Enabled = true,
             KillerEnabled = true,
             SurvivorEnabled = true,
-            Thermal = true,
+            Thermal = false,
             FillRGB = Color3.fromRGB(119, 120, 255),
-            Fill_Transparency = 100,
+            Fill_Transparency = 50,
             OutlineRGB = Color3.fromRGB(119, 120, 255),
-            Outline_Transparency = 100,
+            Outline_Transparency = 50,
             VisibleCheck = false,
             KillerColor = Color3.fromRGB(150, 0, 255),
             SurvivorColor = Color3.fromRGB(0, 255, 255),
         },
         Names = {
-            Enabled = true,
+            Enabled = false,
             RGB = Color3.fromRGB(255, 255, 255),
             KillerShow = true,
             SurvivorShow = true,
-            ShowSkin = true,
+            ShowSkin = false,
+            ShowUsername = false, -- 新增：显示用户名开关
         },
-        Flags = {Enabled = true},
-        Distances = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
+        Flags = {Enabled = false},
+        Distances = {Enabled = false, RGB = Color3.fromRGB(255, 255, 255)},
         Healthbar = {
             Enabled = true, HealthText = true, Lerp = false, HealthTextRGB = Color3.fromRGB(119, 120, 255),
             Width = 2.5,
@@ -56,12 +57,12 @@ local ESP = {
             SurvivorDefaultColor = Color3.fromRGB(0, 255, 0),
         },
         Boxes = {
-            Animate = true, RotationSpeed = 300,
+            Animate = false, RotationSpeed = 300,
             Gradient = false, GradientRGB1 = Color3.fromRGB(119, 120, 255), GradientRGB2 = Color3.fromRGB(0, 0, 0), 
-            GradientFill = true, GradientFillRGB1 = Color3.fromRGB(119, 120, 255), GradientFillRGB2 = Color3.fromRGB(0, 0, 0), 
-            Filled = {Enabled = true, Transparency = 0.75, RGB = Color3.fromRGB(0, 0, 0)},
-            Full = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
-            Corner = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
+            GradientFill = false, GradientFillRGB1 = Color3.fromRGB(119, 120, 255), GradientFillRGB2 = Color3.fromRGB(0, 0, 0), 
+            Filled = {Enabled = false, Transparency = 0.75, RGB = Color3.fromRGB(0, 0, 0)},
+            Full = {Enabled = false, RGB = Color3.fromRGB(255, 255, 255)},
+            Corner = {Enabled = false, RGB = Color3.fromRGB(255, 255, 255)},
         },
     },
     Connections = {RunService = RunService},
@@ -151,7 +152,10 @@ function Functions.FadeOutOnDist(element, distance)
     elseif element:IsA("ImageLabel") then element.ImageTransparency = 1 - transparency
     elseif element:IsA("UIStroke") then element.Transparency = 1 - transparency
     elseif element:IsA("Frame") then element.BackgroundTransparency = 1 - transparency
-    elseif element:IsA("Highlight") then element.FillTransparency = 1 - transparency; element.OutlineTransparency = 1 - transparency end
+    elseif element:IsA("Highlight") then 
+        element.FillTransparency = 1 - transparency
+        element.OutlineTransparency = 1 - transparency 
+    end
 end
 
 local function CreateESPForPlayer(plr)
@@ -215,7 +219,7 @@ local function CreateESPForPlayer(plr)
                 local isSurvivor = IsSurvivor(plr)
 
                 if (isKiller or isSurvivor) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
-                    -- Chams
+                    -- Chams - 修复透明度
                     Chams.Adornee = plr.Character
                     local shouldShowChams = false
                     if ESP.Drawing.Chams.Enabled then
@@ -224,13 +228,23 @@ local function CreateESPForPlayer(plr)
                     end
                     Chams.Enabled = shouldShowChams
                     if shouldShowChams then
-                        if isKiller then Chams.FillColor = ESP.Drawing.Chams.KillerColor; Chams.OutlineColor = ESP.Drawing.Chams.KillerColor
-                        elseif isSurvivor then Chams.FillColor = ESP.Drawing.Chams.SurvivorColor; Chams.OutlineColor = ESP.Drawing.Chams.SurvivorColor end
-                    end
-                    if ESP.Drawing.Chams.Thermal then
-                        local breathe_effect = math.atan(math.sin(tick() * 2)) * 2 / math.pi
-                        Chams.FillTransparency = ESP.Drawing.Chams.Fill_Transparency * breathe_effect * 0.01
-                        Chams.OutlineTransparency = ESP.Drawing.Chams.Outline_Transparency * breathe_effect * 0.01
+                        if isKiller then 
+                            Chams.FillColor = ESP.Drawing.Chams.KillerColor
+                            Chams.OutlineColor = ESP.Drawing.Chams.KillerColor
+                        elseif isSurvivor then 
+                            Chams.FillColor = ESP.Drawing.Chams.SurvivorColor
+                            Chams.OutlineColor = ESP.Drawing.Chams.SurvivorColor
+                        end
+                        -- 修复透明度：直接设置透明度值（0-1），使用用户设置
+                        local fillTrans = ESP.Drawing.Chams.Fill_Transparency / 100
+                        local outlineTrans = ESP.Drawing.Chams.Outline_Transparency / 100
+                        if ESP.Drawing.Chams.Thermal then
+                            local breathe_effect = math.atan(math.sin(tick() * 2)) * 2 / math.pi
+                            fillTrans = fillTrans * breathe_effect
+                            outlineTrans = outlineTrans * breathe_effect
+                        end
+                        Chams.FillTransparency = fillTrans
+                        Chams.OutlineTransparency = outlineTrans
                     end
                     Chams.DepthMode = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
 
@@ -283,20 +297,27 @@ local function CreateESPForPlayer(plr)
                         HealthText.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
                     end
 
-                    -- Names
-                    local roleName = GetRoleName(plr); local skinName = GetSkinName(plr)
+                    -- Role Name (角色名)
+                    local roleName = GetRoleName(plr)
+                    local skinName = GetSkinName(plr)
                     local shouldShowRole = false
                     if isKiller and ESP.Drawing.Names.KillerShow then shouldShowRole = true
                     elseif isSurvivor and ESP.Drawing.Names.SurvivorShow then shouldShowRole = true end
                     if roleName ~= "" and shouldShowRole then
                         RoleName.Visible = true
-                        RoleName.Text = (ESP.Drawing.Names.ShowSkin and skinName ~= "") and string.format("%s | %s", roleName, skinName) or roleName
+                        -- 角色名 + 皮肤（独立控制）
+                        if ESP.Drawing.Names.ShowSkin and skinName ~= "" then
+                            RoleName.Text = string.format("%s | %s", roleName, skinName)
+                        else
+                            RoleName.Text = roleName
+                        end
                         RoleName.Position = UDim2.new(0, Pos.X, 0, Pos.Y - h / 2 - 35)
                         RoleName.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
                     else RoleName.Visible = false end
 
+                    -- Username (玩家名) - 独立开关
                     local shouldShowName = false
-                    if ESP.Drawing.Names.Enabled then
+                    if ESP.Drawing.Names.Enabled and ESP.Drawing.Names.ShowUsername then
                         if isKiller and ESP.Drawing.Names.KillerShow then shouldShowName = true
                         elseif isSurvivor and ESP.Drawing.Names.SurvivorShow then shouldShowName = true end
                     end
@@ -313,7 +334,7 @@ local function CreateESPForPlayer(plr)
                         Distance.Position = UDim2.new(0, Pos.X, 0, Pos.Y + h / 2 + 7)
                         Distance.Text = string.format("%d meters", math.floor(Dist))
                         Distance.Visible = true
-                    end
+                    else Distance.Visible = false end
                 else HideESP() end
             else HideESP() end
         else HideESP() end
