@@ -46,13 +46,16 @@ local ESP = {
             KillerShow = true,
             SurvivorShow = true,
             ShowSkin = false,
-            ShowUsername = false, -- 新增：显示用户名开关
+            ShowUsername = false,
         },
         Flags = {Enabled = false},
-        Distances = {Enabled = false, RGB = Color3.fromRGB(255, 255, 255)},
+        Distances = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
         Healthbar = {
-            Enabled = true, HealthText = true, Lerp = false, HealthTextRGB = Color3.fromRGB(119, 120, 255),
-            Width = 2.5,
+            Enabled = true, 
+            HealthText = false,
+            Lerp = false, 
+            HealthTextRGB = Color3.fromRGB(119, 120, 255),
+            Width = 1.5,
             KillerDefaultColor = Color3.fromRGB(255, 0, 0),
             SurvivorDefaultColor = Color3.fromRGB(0, 255, 0),
         },
@@ -219,7 +222,7 @@ local function CreateESPForPlayer(plr)
                 local isSurvivor = IsSurvivor(plr)
 
                 if (isKiller or isSurvivor) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
-                    -- Chams - 修复透明度
+                    -- Chams
                     Chams.Adornee = plr.Character
                     local shouldShowChams = false
                     if ESP.Drawing.Chams.Enabled then
@@ -235,7 +238,6 @@ local function CreateESPForPlayer(plr)
                             Chams.FillColor = ESP.Drawing.Chams.SurvivorColor
                             Chams.OutlineColor = ESP.Drawing.Chams.SurvivorColor
                         end
-                        -- 修复透明度：直接设置透明度值（0-1），使用用户设置
                         local fillTrans = ESP.Drawing.Chams.Fill_Transparency / 100
                         local outlineTrans = ESP.Drawing.Chams.Outline_Transparency / 100
                         if ESP.Drawing.Chams.Thermal then
@@ -305,7 +307,6 @@ local function CreateESPForPlayer(plr)
                     elseif isSurvivor and ESP.Drawing.Names.SurvivorShow then shouldShowRole = true end
                     if roleName ~= "" and shouldShowRole then
                         RoleName.Visible = true
-                        -- 角色名 + 皮肤（独立控制）
                         if ESP.Drawing.Names.ShowSkin and skinName ~= "" then
                             RoleName.Text = string.format("%s | %s", roleName, skinName)
                         else
@@ -315,7 +316,7 @@ local function CreateESPForPlayer(plr)
                         RoleName.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
                     else RoleName.Visible = false end
 
-                    -- Username (玩家名) - 独立开关
+                    -- Username (玩家名)
                     local shouldShowName = false
                     if ESP.Drawing.Names.Enabled and ESP.Drawing.Names.ShowUsername then
                         if isKiller and ESP.Drawing.Names.KillerShow then shouldShowName = true
