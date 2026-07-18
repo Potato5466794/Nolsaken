@@ -18,13 +18,11 @@ local ESPSettings = {
     generatorESP = false, itemESP = false,
     pizzaEsp = false, pizzaDeliveryEsp = false, zombieEsp = false, taphTripwireEsp = false,
     tripMineEsp = false, twoTimeRespawnEsp = false, graffitiEsp = false, foldersEsp = false,
-    groundBulbESP = false, vineESP = false, misterBeastESP = false,
     generatorColor = Color3.fromRGB(200, 100, 200), itemColor = Color3.fromRGB(200, 200, 0),
     pizzaColor = Color3.fromRGB(200, 150, 0), pizzaDeliveryColor = Color3.fromRGB(200, 100, 100),
     zombieColor = Color3.fromRGB(200, 100, 100), taphTripwireColor = Color3.fromRGB(100, 0, 100),
     tripMineColor = Color3.fromRGB(255, 0, 255), twoTimeRespawnColor = Color3.fromRGB(0, 150, 200),
-    graffitiColor = Color3.fromRGB(255, 255, 255), foldersColor = Color3.fromRGB(255, 204, 51),
-    groundBulbColor = Color3.fromRGB(180, 60, 255), vineColor = Color3.fromRGB(180, 60, 255), misterBeastColor = Color3.fromRGB(180, 60, 255)
+    graffitiColor = Color3.fromRGB(255, 255, 255), foldersColor = Color3.fromRGB(255, 204, 51)
 }
 
 local DummyNames = {
@@ -101,7 +99,7 @@ local function CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDeli
     elseif isItem then targetPart = model:FindFirstChild("ItemRoot")
     elseif isPizza or isPizzaDelivery or isZombie or isGraffiti or isFolders then targetPart = model:IsA("BasePart") and model or model:FindFirstChildWhichIsA("BasePart", true)
     elseif isTaph or isTripMine or isRespawn then targetPart = model:IsA("Model") and (GetGeneratorPart(model) or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) or model
-    else targetPart = model:IsA("BasePart") and model or (model:IsA("Model") and (model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true))) end
+    end
 
     if not targetPart then return end
 
@@ -130,10 +128,7 @@ local function CreateESP(model, color, isGenerator, isItem, isPizza, isPizzaDeli
         if progress then progress:GetPropertyChangedSignal("Value"):Connect(function() UpdateGeneratorProgress(espData) end) end
     else
         local displayName = model.Name
-        if model.Name == "GroundBulbModel" then displayName = "Ground Bulb"
-        elseif model.Name == "VineModel" then displayName = "Vine"
-        elseif model.Name == "MisterBeast" then displayName = "Mister Beast"
-        elseif isPizza then displayName = "Pizza"
+        if isPizza then displayName = "Pizza"
         elseif isPizzaDelivery then displayName = "Pizza Delivery"
         elseif isZombie then displayName = "Zombie"
         elseif isTaph then displayName = "Tripwire"
@@ -156,6 +151,29 @@ local function RemoveESP(model)
         if model:FindFirstChild("TAOWARE_Highlight") then model.TAOWARE_Highlight:Destroy() end
         if model:FindFirstChild("TAOWARE_Billboard") then model.TAOWARE_Billboard:Destroy() end
     end)
+end
+
+local function CreateTracer(model, part, color)
+    if not model or not part or not part:IsA("BasePart") then return end
+    if TracerData[model] then return end
+    local line = Drawing.new("Line")
+    line.Visible = true; line.Color = color or Color3.fromRGB(255, 255, 255); line.Thickness = 2; line.Transparency = 1
+    TracerData[model] = {line = line, part = part}
+end
+
+local function RemoveTracer(model)
+    if TracerData[model] then pcall(function() TracerData[model].line.Visible = false; TracerData[model].line:Remove() end); TracerData[model] = nil end
+end
+
+local function UpdateTracers()
+    for model, data in pairs(TracerData) do
+        local line, part = data.line, data.part
+        if line and part and part.Parent then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then line.Visible = true; line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y); line.To = Vector2.new(pos.X, pos.Y)
+            else line.Visible = false end
+        else RemoveTracer(model) end
+    end
 end
 
 local function AddHighlightAdvanced(Obj, Config)
@@ -201,6 +219,7 @@ local function UpdateESP()
     local mapFolder = Services.Workspace:FindFirstChild("Map")
     if not mapFolder or not mapFolder:FindFirstChild("Ingame") then
         for i = #ObjectESPData, 1, -1 do RemoveESP(ObjectESPData[i].model) end
+        for model in pairs(TracerData) do RemoveTracer(model) end
         return
     end
     local ingame = mapFolder.Ingame
@@ -208,16 +227,16 @@ local function UpdateESP()
     if ingame:FindFirstChild("Map") then
         for _, gen in ipairs(ingame.Map:GetChildren()) do
             if gen:IsA("Model") and gen.Name:lower():find("generator") and gen.Name ~= "FakeGenerator" then
-                if IsRagdoll(gen) then RemoveESP(gen); continue end
+                if IsRagdoll(gen) then RemoveESP(gen); RemoveTracer(gen); continue end
                 local progress = gen:FindFirstChild("Progress")
-                if ESPSettings.generatorESP and progress and progress.Value < 100 and not gen:FindFirstChild("TAOWARE_Highlight") then CreateESP(gen, ESPSettings.generatorColor, true)
+                if ESPSettings.generatorESP and progress and progress.Value < 100 and not gen:FindFirstChild("TAOWARE_Highlight") then CreateESP(gen, ESPSettings.generatorColor, true, false, false, false, false, false, false, false, false, false)
                 elseif not ESPSettings.generatorESP or (progress and progress.Value >= 100) then RemoveESP(gen) end
             end
         end
         for _, item in ipairs(ingame.Map:GetDescendants()) do
             if item.Name == "ItemRoot" and item.Parent and item.Parent:IsA("Model") then
                 local itemModel = item.Parent
-                if ESPSettings.itemESP and not itemModel:FindFirstChild("TAOWARE_Highlight") then CreateESP(itemModel, ESPSettings.itemColor, false, true)
+                if ESPSettings.itemESP and not itemModel:FindFirstChild("TAOWARE_Highlight") then CreateESP(itemModel, ESPSettings.itemColor, false, true, false, false, false, false, false, false, false, false)
                 elseif not ESPSettings.itemESP then RemoveESP(itemModel) end
             end
         end
@@ -225,54 +244,45 @@ local function UpdateESP()
     
     for _, pizza in ipairs(ingame:GetChildren()) do
         if pizza.Name == "Pizza" and pizza:IsA("BasePart") then
-            if ESPSettings.pizzaEsp and not pizza:FindFirstChild("TAOWARE_Highlight") then CreateESP(pizza, ESPSettings.pizzaColor, false, false, true)
+            if ESPSettings.pizzaEsp and not pizza:FindFirstChild("TAOWARE_Highlight") then CreateESP(pizza, ESPSettings.pizzaColor, false, false, true, false, false, false, false, false, false, false)
             elseif not ESPSettings.pizzaEsp then RemoveESP(pizza) end
         end
     end
     
     for _, delivery in ipairs(ingame:GetChildren()) do
         if delivery:IsA("Model") and table.find(DummyNames, delivery.Name) then
-            if ESPSettings.pizzaDeliveryEsp and not delivery:FindFirstChild("TAOWARE_Highlight") and delivery:FindFirstChild("HumanoidRootPart") then CreateESP(delivery, ESPSettings.pizzaDeliveryColor, false, false, false, true)
+            if ESPSettings.pizzaDeliveryEsp and not delivery:FindFirstChild("TAOWARE_Highlight") and delivery:FindFirstChild("HumanoidRootPart") then CreateESP(delivery, ESPSettings.pizzaDeliveryColor, false, false, false, true, false, false, false, false, false, false)
             elseif not ESPSettings.pizzaDeliveryEsp then RemoveESP(delivery) end
         end
     end
     
     for _, zombie in ipairs(ingame:GetChildren()) do
         if zombie.Name == "1x1x1x1Zombie" and zombie:IsA("Model") then
-            if ESPSettings.zombieEsp and not zombie:FindFirstChild("TAOWARE_Highlight") and zombie:FindFirstChild("HumanoidRootPart") then CreateESP(zombie, ESPSettings.zombieColor, false, false, false, false, true)
+            if ESPSettings.zombieEsp and not zombie:FindFirstChild("TAOWARE_Highlight") and zombie:FindFirstChild("HumanoidRootPart") then CreateESP(zombie, ESPSettings.zombieColor, false, false, false, false, true, false, false, false, false, false)
             elseif not ESPSettings.zombieEsp then RemoveESP(zombie) end
         end
     end
     
     for _, obj in ipairs(ingame:GetChildren()) do
         if obj.Name:match("TaphTripwire$") and obj:IsA("Model") then
-            if ESPSettings.taphTripwireEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.taphTripwireColor, false, false, false, false, false, true)
+            if ESPSettings.taphTripwireEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.taphTripwireColor, false, false, false, false, false, true, false, false, false, false)
             elseif not ESPSettings.taphTripwireEsp then RemoveESP(obj) end
         end
         if obj.Name == "SubspaceTripmine" and obj:IsA("Model") then
-            if ESPSettings.tripMineEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.tripMineColor, false, false, false, false, false, false, true)
+            if ESPSettings.tripMineEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.tripMineColor, false, false, false, false, false, false, true, false, false, false)
             elseif not ESPSettings.tripMineEsp then RemoveESP(obj) end
         end
         if obj.Name == "GraffitiCL" and obj:IsA("BasePart") then
-            if ESPSettings.graffitiEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.graffitiColor, false, false, false, false, false, false, false, false, true)
+            if ESPSettings.graffitiEsp and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.graffitiColor, false, false, false, false, false, false, false, false, true, false)
             elseif not ESPSettings.graffitiEsp then RemoveESP(obj) end
         end
-        if obj.Name == "GroundBulbModel" and obj:IsA("Model") then
-            if ESPSettings.groundBulbESP and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.groundBulbColor, false, false, false, false, false, false, false, false, false, false) end
-        elseif not ESPSettings.groundBulbESP then RemoveESP(obj) end
-        if obj.Name == "VineModel" and obj:IsA("Model") then
-            if ESPSettings.vineESP and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.vineColor, false, false, false, false, false, false, false, false, false, false) end
-        elseif not ESPSettings.vineESP then RemoveESP(obj) end
-        if obj.Name == "MisterBeast" and obj:IsA("Model") then
-            if ESPSettings.misterBeastESP and not obj:FindFirstChild("TAOWARE_Highlight") then CreateESP(obj, ESPSettings.misterBeastColor, false, false, false, false, false, false, false, false, false, false) end
-        elseif not ESPSettings.misterBeastESP then RemoveESP(obj) end
     end
     
     for _, obj in ipairs(ingame:GetDescendants()) do
         if obj and obj.Name and tostring(obj.Name):lower():find("respawnlocation") then
             local target = obj:IsA("Model") and obj or obj:IsA("BasePart") and obj or (obj:FindFirstAncestorOfClass("Model") or obj)
             if not target or IsRagdoll(target) then continue end
-            if ESPSettings.twoTimeRespawnEsp and not target:FindFirstChild("TAOWARE_Highlight") then CreateESP(target, ESPSettings.twoTimeRespawnColor, false, false, false, false, false, false, false, true)
+            if ESPSettings.twoTimeRespawnEsp and not target:FindFirstChild("TAOWARE_Highlight") then CreateESP(target, ESPSettings.twoTimeRespawnColor, false, false, false, false, false, false, false, true, false, false)
             elseif not ESPSettings.twoTimeRespawnEsp then RemoveESP(target) end
         end
     end
@@ -286,6 +296,7 @@ local function UpdateESP()
 end
 
 task.spawn(function() while task.wait(3) do UpdateESP() end end)
+RunService.RenderStepped:Connect(UpdateTracers)
 task.spawn(function() while task.wait(2) do UpdateAdvancedHighlights() end end)
 
 function EspLib.GetSettings() return ESPSettings end
