@@ -39,7 +39,7 @@ local Highlights = {}
 local Nametags = {}
 
 local AdvancedSettings = {Enabled = false, OutlineOnly = true, ShowNametag = false, Color = Color3.fromRGB(0, 255, 255)}
-local AdvancedNames = {"BuildermanDispenser","BuildermanSentry","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow"}
+local AdvancedNames = {"BuildermanDispenser","BuildermanSentry","HumanoidRootProjectile","Swords","shockwave","Voidstar","Shadow","GroundBulbModel","VineModel"}
 
 local AlertData = {NST = {connection = nil}, NEK = {connection = nil}}
 
