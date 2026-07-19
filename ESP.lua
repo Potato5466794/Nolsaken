@@ -48,12 +48,12 @@ local ESP = {
             ShowSkin = false,
             ShowUsername = false,
         },
-        -- 新增：杀手状态标签配置
+        -- 状态标签配置（已改为英文）
         StatusLabel = {
             Enabled = true,
             RGB = Color3.fromRGB(255, 200, 0),
-            InvincibleText = "[无敌]",
-            StunnedDisabledText = "[不可眩晕]",
+            InvincibleText = "[Unhittable]",
+            StunnedDisabledText = "[Stun Immune]",
         },
         Flags = {Enabled = false},
         Distances = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
@@ -174,7 +174,6 @@ local function CreateESPForPlayer(plr)
     local Name = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, -11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
     local Distance = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, 11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
     
-    -- 新增：杀手状态标签
     local StatusLabel = Functions.Create("TextLabel", {
         Parent = ScreenGui, 
         Position = UDim2.new(0.5, 0, 0, -23), 
@@ -214,7 +213,7 @@ local function CreateESPForPlayer(plr)
         LeftTop.Visible = false; LeftSide.Visible = false; BottomSide.Visible = false; BottomDown.Visible = false
         RightTop.Visible = false; RightSide.Visible = false; BottomRightSide.Visible = false; BottomRightDown.Visible = false
         Chams.Enabled = false
-        StatusLabel.Visible = false  -- 新增
+        StatusLabel.Visible = false
         if not plr then if ScreenGui then ScreenGui:Destroy() end; if Connection then Connection:Disconnect() end end
     end
 
@@ -241,7 +240,7 @@ local function CreateESPForPlayer(plr)
                     Functions.FadeOutOnDist(RightTop, Dist); Functions.FadeOutOnDist(RightSide, Dist)
                     Functions.FadeOutOnDist(BottomRightSide, Dist); Functions.FadeOutOnDist(BottomRightDown, Dist)
                     Functions.FadeOutOnDist(Chams, Dist)
-                    Functions.FadeOutOnDist(StatusLabel, Dist)  -- 新增
+                    Functions.FadeOutOnDist(StatusLabel, Dist)
                 end
 
                 local isKiller = IsKiller(plr)
@@ -325,7 +324,7 @@ local function CreateESPForPlayer(plr)
                         HealthText.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
                     end
 
-                
+                    -- Role Name
                     local roleName = GetRoleName(plr)
                     local skinName = GetSkinName(plr)
                     local shouldShowRole = false
@@ -342,7 +341,7 @@ local function CreateESPForPlayer(plr)
                         RoleName.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
                     else RoleName.Visible = false end
 
-                    
+                    -- 杀手状态标签（英文）
                     if ESP.Drawing.StatusLabel.Enabled and isKiller then
                         local invincible = plr.Character:GetAttribute("Invincible")
                         local stunnedDisabled = plr.Character:GetAttribute("StunnedDisabled")
