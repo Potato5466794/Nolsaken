@@ -48,6 +48,13 @@ local ESP = {
             ShowSkin = false,
             ShowUsername = false,
         },
+        -- 新增：杀手状态标签配置
+        StatusLabel = {
+            Enabled = true,
+            RGB = Color3.fromRGB(255, 200, 0),
+            InvincibleText = "[无敌]",
+            StunnedDisabledText = "[不可眩晕]",
+        },
         Flags = {Enabled = false},
         Distances = {Enabled = true, RGB = Color3.fromRGB(255, 255, 255)},
         Healthbar = {
@@ -166,6 +173,23 @@ local function CreateESPForPlayer(plr)
     local RoleName = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, -35), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 0), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
     local Name = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, -11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
     local Distance = Functions.Create("TextLabel", {Parent = ScreenGui, Position = UDim2.new(0.5, 0, 0, 11), Size = UDim2.new(0, 200, 0, 20), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = ESP.FontSize, TextStrokeTransparency = 0, TextStrokeColor3 = Color3.fromRGB(0, 0, 0), RichText = true})
+    
+    -- 新增：杀手状态标签
+    local StatusLabel = Functions.Create("TextLabel", {
+        Parent = ScreenGui, 
+        Position = UDim2.new(0.5, 0, 0, -23), 
+        Size = UDim2.new(0, 200, 0, 20), 
+        AnchorPoint = Vector2.new(0.5, 0.5), 
+        BackgroundTransparency = 1, 
+        TextColor3 = ESP.Drawing.StatusLabel.RGB, 
+        Font = Enum.Font.Code, 
+        TextSize = ESP.FontSize, 
+        TextStrokeTransparency = 0, 
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0), 
+        RichText = true,
+        Visible = false
+    })
+    
     local Box = Functions.Create("Frame", {Parent = ScreenGui, BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.75, BorderSizePixel = 0})
     local Gradient1 = Functions.Create("UIGradient", {Parent = Box, Enabled = ESP.Drawing.Boxes.GradientFill, Color = ColorSequence.new{ColorSequenceKeypoint.new(0, ESP.Drawing.Boxes.GradientFillRGB1), ColorSequenceKeypoint.new(1, ESP.Drawing.Boxes.GradientFillRGB2)}})
     local Outline = Functions.Create("UIStroke", {Parent = Box, Enabled = ESP.Drawing.Boxes.Gradient, Transparency = 0, Color = Color3.fromRGB(255, 255, 255), LineJoinMode = Enum.LineJoinMode.Miter})
@@ -190,6 +214,7 @@ local function CreateESPForPlayer(plr)
         LeftTop.Visible = false; LeftSide.Visible = false; BottomSide.Visible = false; BottomDown.Visible = false
         RightTop.Visible = false; RightSide.Visible = false; BottomRightSide.Visible = false; BottomRightDown.Visible = false
         Chams.Enabled = false
+        StatusLabel.Visible = false  -- 新增
         if not plr then if ScreenGui then ScreenGui:Destroy() end; if Connection then Connection:Disconnect() end end
     end
 
@@ -216,6 +241,7 @@ local function CreateESPForPlayer(plr)
                     Functions.FadeOutOnDist(RightTop, Dist); Functions.FadeOutOnDist(RightSide, Dist)
                     Functions.FadeOutOnDist(BottomRightSide, Dist); Functions.FadeOutOnDist(BottomRightDown, Dist)
                     Functions.FadeOutOnDist(Chams, Dist)
+                    Functions.FadeOutOnDist(StatusLabel, Dist)  -- 新增
                 end
 
                 local isKiller = IsKiller(plr)
@@ -299,7 +325,7 @@ local function CreateESPForPlayer(plr)
                         HealthText.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
                     end
 
-                    -- Role Name (角色名)
+                
                     local roleName = GetRoleName(plr)
                     local skinName = GetSkinName(plr)
                     local shouldShowRole = false
@@ -316,7 +342,31 @@ local function CreateESPForPlayer(plr)
                         RoleName.TextColor3 = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
                     else RoleName.Visible = false end
 
-                    -- Username (玩家名)
+                    
+                    if ESP.Drawing.StatusLabel.Enabled and isKiller then
+                        local invincible = plr.Character:GetAttribute("Invincible")
+                        local stunnedDisabled = plr.Character:GetAttribute("StunnedDisabled")
+                        local statuses = {}
+                        if invincible == 1 or invincible == true then
+                            table.insert(statuses, ESP.Drawing.StatusLabel.InvincibleText)
+                        end
+                        if stunnedDisabled == 1 or stunnedDisabled == true then
+                            table.insert(statuses, ESP.Drawing.StatusLabel.StunnedDisabledText)
+                        end
+                        
+                        if #statuses > 0 then
+                            StatusLabel.Text = table.concat(statuses, " ")
+                            StatusLabel.TextColor3 = ESP.Drawing.StatusLabel.RGB
+                            StatusLabel.Position = UDim2.new(0, Pos.X, 0, Pos.Y - h / 2 - 23)
+                            StatusLabel.Visible = true
+                        else
+                            StatusLabel.Visible = false
+                        end
+                    else
+                        StatusLabel.Visible = false
+                    end
+
+                    -- Username
                     local shouldShowName = false
                     if ESP.Drawing.Names.Enabled and ESP.Drawing.Names.ShowUsername then
                         if isKiller and ESP.Drawing.Names.KillerShow then shouldShowName = true
